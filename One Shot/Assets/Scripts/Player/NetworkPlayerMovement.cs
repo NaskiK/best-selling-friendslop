@@ -11,8 +11,10 @@ public class NetworkPlayerMovement : NetworkBehaviour
     [SerializeField] private float jumpHeight = 2f;
     [SerializeField] private float gravity = -20f;
 
-    private CharacterController characterController;
+    [Header("Rotation")]
+    [SerializeField] private float rotationSpeed = 12f;
 
+    private CharacterController characterController;
     private float verticalVelocity;
 
     private void Awake()
@@ -22,8 +24,6 @@ public class NetworkPlayerMovement : NetworkBehaviour
 
     private void Update()
     {
-        // Only the player who owns this network object
-        // is allowed to process keyboard input.
         if (!IsOwner)
             return;
 
@@ -53,8 +53,25 @@ public class NetworkPlayerMovement : NetworkBehaviour
 
         input = Vector2.ClampMagnitude(input, 1f);
 
+        // Get the camera's forward/right directions.
+        Transform cameraTransform = Camera.main.transform;
+
+        Vector3 cameraForward = cameraTransform.forward;
+        Vector3 cameraRight = cameraTransform.right;
+
+        // Remove vertical component.
+        cameraForward.y = 0f;
+        cameraRight.y = 0f;
+
+        cameraForward.Normalize();
+        cameraRight.Normalize();
+
+        // Convert WASD input into camera-relative movement.
         Vector3 movement =
-            new Vector3(input.x, 0f, input.y);
+            cameraForward * input.y +
+            cameraRight * input.x;
+
+        movement = Vector3.ClampMagnitude(movement, 1f);
 
         bool sprinting =
             keyboard.leftShiftKey.isPressed;
@@ -64,14 +81,27 @@ public class NetworkPlayerMovement : NetworkBehaviour
 
         movement *= currentSpeed;
 
-        // Gravity
+        // Rotate character toward movement direction.
+        if (movement.sqrMagnitude > 0.01f)
+        {
+            Quaternion targetRotation =
+                Quaternion.LookRotation(movement.normalized);
+
+            transform.rotation = Quaternion.Slerp(
+                transform.rotation,
+                targetRotation,
+                rotationSpeed * Time.deltaTime
+            );
+        }
+
+        // Gravity.
         if (characterController.isGrounded &&
             verticalVelocity < 0f)
         {
             verticalVelocity = -2f;
         }
 
-        // Jump
+        // Jump.
         if (keyboard.spaceKey.wasPressedThisFrame &&
             characterController.isGrounded)
         {
