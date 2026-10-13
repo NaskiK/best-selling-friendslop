@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 public class ThirdPersonCamera : MonoBehaviour
 {
     [Header("Target")]
-    [SerializeField] private float targetHeight = 0.5f;   // now measured from the hips, not the feet
+    [SerializeField] private float targetHeight = 1.5f;
 
     [Header("Distance")]
     [SerializeField] private float distance = 7f;
@@ -20,63 +20,44 @@ public class ThirdPersonCamera : MonoBehaviour
     [Header("Smoothing")]
     [SerializeField] private float positionSmoothTime = 0.05f;
 
-    [Header("Offline test only")]
-    [SerializeField] private Transform overrideTarget;    // drag the hips here in RagdollTest
-
-
     private Transform target;
+
     private float yaw;
     private float pitch = 20f;
+
     private Vector3 currentVelocity;
 
     private void LateUpdate()
     {
-        // first lines of LateUpdate:
-        if (target == null && overrideTarget != null)
+        if (target == null)
         {
-            target = overrideTarget;
-            yaw = target.eulerAngles.y;
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            FindLocalPlayer();
+
+            if (target == null)
+                return;
         }
 
         HandleMouseLook();
         UpdateCameraPosition();
     }
 
-    private void FindTarget()
+    private void FindLocalPlayer()
     {
-
-        // Offline test scene: use the assigned hips.
-        if (overrideTarget != null)
-        {
-            SetTarget(overrideTarget);
+        if (NetworkManager.Singleton == null)
             return;
-        }
 
-        // Real game: follow the local player's hips.
-        if (NetworkManager.Singleton == null) return;
-        if (NetworkManager.Singleton.LocalClient == null) return;
+        if (NetworkManager.Singleton.LocalClient == null)
+            return;
 
-        NetworkObject playerObject = NetworkManager.Singleton.LocalClient.PlayerObject;
-        if (playerObject == null) return;
+        if (NetworkManager.Singleton.LocalClient.PlayerObject == null)
+            return;
 
-        var ragdoll = playerObject.GetComponent<ActiveRagdoll>();
-        if (ragdoll != null)
-        {
-            if (ragdoll.Hips == null) return;   // its Start() hasn't run yet, try again next frame
-            SetTarget(ragdoll.CameraTarget);
-        }
-        else
-        {
-            SetTarget(playerObject.transform);
-        }
-    }
+        target =
+            NetworkManager.Singleton.LocalClient.PlayerObject.transform;
 
-    private void SetTarget(Transform newTarget)
-    {
-        target = newTarget;
         yaw = target.eulerAngles.y;
+
+        // Now that the player exists, start controlling the camera.
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
@@ -84,29 +65,50 @@ public class ThirdPersonCamera : MonoBehaviour
     private void HandleMouseLook()
     {
         Mouse mouse = Mouse.current;
-        if (mouse == null) return;
 
-        Vector2 mouseDelta = mouse.delta.ReadValue();
+        if (mouse == null)
+            return;
+
+        Vector2 mouseDelta =
+            mouse.delta.ReadValue();
 
         yaw += mouseDelta.x * mouseSensitivity;
         pitch -= mouseDelta.y * mouseSensitivity;
-        pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+
+        pitch = Mathf.Clamp(
+            pitch,
+            minPitch,
+            maxPitch
+        );
     }
 
     private void UpdateCameraPosition()
     {
-        Vector3 targetPosition = target.position + Vector3.up * targetHeight;
-        Quaternion cameraRotation = Quaternion.Euler(pitch, yaw, 0f);
-        Vector3 desiredPosition = targetPosition - cameraRotation * Vector3.forward * distance;
+        Vector3 targetPosition =
+            target.position +
+            Vector3.up * targetHeight;
+
+        Quaternion cameraRotation =
+            Quaternion.Euler(pitch, yaw, 0f);
+
+        Vector3 desiredPosition =
+            targetPosition -
+            cameraRotation * Vector3.forward * distance;
 
         transform.position = Vector3.SmoothDamp(
-            transform.position, desiredPosition, ref currentVelocity, positionSmoothTime);
+            transform.position,
+            desiredPosition,
+            ref currentVelocity,
+            positionSmoothTime
+        );
+
         transform.rotation = cameraRotation;
     }
 
     private void OnApplicationFocus(bool hasFocus)
     {
-        if (!hasFocus) return;
+        if (!hasFocus)
+            return;
 
         if (target != null)
         {
