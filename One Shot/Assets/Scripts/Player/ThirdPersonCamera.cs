@@ -49,15 +49,20 @@ public class ThirdPersonCamera : MonoBehaviour
         if (NetworkManager.Singleton.LocalClient == null)
             return;
 
-        if (NetworkManager.Singleton.LocalClient.PlayerObject == null)
+        NetworkObject playerObject =
+            NetworkManager.Singleton.LocalClient.PlayerObject;
+
+        if (playerObject == null)
             return;
 
-        target =
-            NetworkManager.Singleton.LocalClient.PlayerObject.transform;
+        var ragdoll = playerObject.GetComponent<ActiveRagdoll>();
 
-        yaw = target.eulerAngles.y;
+        target = ragdoll != null
+            ? ragdoll.Hips.transform
+            : playerObject.transform;
 
-        // Now that the player exists, start controlling the camera.
+        yaw = playerObject.transform.eulerAngles.y;
+
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
