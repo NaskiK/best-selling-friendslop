@@ -125,6 +125,8 @@ public class ActiveRagdoll : NetworkBehaviour
 
     private void Update()
     {
+    
+
         if (!IsSpawned) return;
 
         // Movement measured from the hips, used for other players' animation.
