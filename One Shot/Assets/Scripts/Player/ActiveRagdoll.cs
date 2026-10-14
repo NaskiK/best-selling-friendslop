@@ -17,11 +17,11 @@ public class ActiveRagdoll : NetworkBehaviour
 
     [Header("Balance")]
     [Range(0f, 1f)] public float stability = 1f;       // the drunk meter will drive this
-    [SerializeField] private float uprightStrength = 300f;
-    [SerializeField] private float turnStrength = 150f;
-    [SerializeField] private float angularDamping = 15f;
-    [SerializeField] private float rideSpring = 120f;
-    [SerializeField] private float rideDamper = 12f;
+    [SerializeField] private float uprightStrength = 10000f;
+    [SerializeField] private float turnStrength = 61f;
+    [SerializeField] private float angularDamping = 27f;
+    [SerializeField] private float rideSpring = 250f;
+    [SerializeField] private float rideDamper = 30f;
 
     [Header("Movement")]
     [SerializeField] private float walkSpeed = 4f;
