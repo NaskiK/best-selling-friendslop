@@ -127,34 +127,44 @@ public class ActiveRagdoll : NetworkBehaviour
     {
         if (!IsSpawned) return;
 
-        // Animation speed, for everyone. Measured from movement, because
-        // the hips on other screens are moved by NetworkTransform (velocity is 0).
+        // Movement measured from the hips, used for other players' animation.
         Vector3 pos = hips.transform.position;
         Vector3 delta = pos - lastHipsPos;
         delta.y = 0f;
         lastHipsPos = pos;
 
-        if (animator.runtimeAnimatorController != null && Time.deltaTime > 0f)
-            animator.SetFloat(SpeedHash, delta.magnitude / Time.deltaTime, 0.1f, Time.deltaTime);
+        float animSpeed = Time.deltaTime > 0f ? delta.magnitude / Time.deltaTime : 0f;
 
-        if (!IsOwner) return;
+        if (IsOwner)
+        {
+            var kb = Keyboard.current;
+            if (kb != null && Camera.main != null)
+            {
+                Vector2 input = new Vector2(
+                    (kb.dKey.isPressed ? 1f : 0f) - (kb.aKey.isPressed ? 1f : 0f),
+                    (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f));
+                input = Vector2.ClampMagnitude(input, 1f);
 
-        var kb = Keyboard.current;
-        if (kb == null || Camera.main == null) return;
+                Transform cam = Camera.main.transform;
+                Vector3 f = cam.forward; f.y = 0f; f.Normalize();
+                Vector3 r = cam.right; r.y = 0f; r.Normalize();
 
-        Vector2 input = new Vector2(
-            (kb.dKey.isPressed ? 1f : 0f) - (kb.aKey.isPressed ? 1f : 0f),
-            (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f));
-        input = Vector2.ClampMagnitude(input, 1f);
+                moveDir = f * input.y + r * input.x;
+                sprint = kb.leftShiftKey.isPressed;
+                if (kb.spaceKey.wasPressedThisFrame) jumpRequested = true;
+                if (moveDir.sqrMagnitude > 0.01f) desiredDirection = moveDir.normalized;
+            }
+            else
+            {
+                moveDir = Vector3.zero;
+            }
 
-        Transform cam = Camera.main.transform;
-        Vector3 f = cam.forward; f.y = 0f; f.Normalize();
-        Vector3 r = cam.right; r.y = 0f; r.Normalize();
+            // Owner: animate from input, so falling or twitching can't keep the run going.
+            animSpeed = moveDir.magnitude * (sprint ? sprintSpeed : walkSpeed);
+        }
 
-        moveDir = f * input.y + r * input.x;
-        sprint = kb.leftShiftKey.isPressed;
-        if (kb.spaceKey.wasPressedThisFrame) jumpRequested = true;
-        if (moveDir.sqrMagnitude > 0.01f) desiredDirection = moveDir.normalized;
+        if (animator.runtimeAnimatorController != null)
+            animator.SetFloat(SpeedHash, animSpeed, 0.1f, Time.deltaTime);
     }
 
     private void FixedUpdate()

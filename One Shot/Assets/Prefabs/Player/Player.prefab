@@ -928,7 +928,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 3273270224
+  GlobalObjectIdHash: 966569143
   InScenePlacedSourceGlobalObjectIdHash: 0
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
@@ -1009,11 +1009,11 @@ MonoBehaviour:
   jointSpring: 3047
   jointDamper: 99.8
   stability: 1
-  uprightStrength: 869.3
+  uprightStrength: 1438.4
   turnStrength: 68.2
   angularDamping: 27.4
-  rideSpring: 66.4
-  rideDamper: 12
+  rideSpring: 250.1
+  rideDamper: 30
   walkSpeed: 4
   sprintSpeed: 7
   responsiveness: 10
