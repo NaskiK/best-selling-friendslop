@@ -892,6 +892,7 @@ GameObject:
   - component: {fileID: 6103772393530913892}
   - component: {fileID: 3035916066940903283}
   - component: {fileID: 5763647018695076948}
+  - component: {fileID: 3162253359911902270}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -1010,15 +1011,37 @@ MonoBehaviour:
   jointDamper: 99.8
   stability: 1
   uprightStrength: 10000
-  turnStrength: 50
+  turnStrength: 100
   angularDamping: 27
   rideSpring: 250.1
   rideDamper: 30
   walkSpeed: 4
   sprintSpeed: 7
   responsiveness: 10
-  jumpSpeed: 19
+  jumpSpeed: 30
+  jumpPreparationTime: 0.8
+  jumpPreparationSpeedMultiplier: 0.25
   spawnSpacing: 1.5
+--- !u!114 &3162253359911902270
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1687913844004354383}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1a188dfd50f82bf45bba30dd2de084bf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlapController
+  ShowTopMostFoldoutHeaderGroup: 1
+  slapKey: 20
+  slapRange: 2
+  impactDelay: 0.2
+  slapCooldown: 0.8
+  forwardForce: 12
+  leftForce: 4
+  upwardForce: 4
 --- !u!1 &1769054305648978004
 GameObject:
   m_ObjectHideFlags: 0

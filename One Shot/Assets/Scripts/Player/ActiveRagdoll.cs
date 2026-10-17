@@ -1,3 +1,4 @@
+
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
@@ -6,17 +7,17 @@ using UnityEngine.InputSystem;
 public class ActiveRagdoll : NetworkBehaviour
 {
     [Header("Rigs")]
-    [SerializeField] private Transform animatedRoot;   // AnimatedRig
-    [SerializeField] private Transform physicsRoot;    // PhysicsRig
-    [SerializeField] private Animator animator;        // Animator on AnimatedRig
-    [SerializeField] private Rigidbody hips;           // hips bone under PhysicsRig
+    [SerializeField] private Transform animatedRoot;
+    [SerializeField] private Transform physicsRoot;
+    [SerializeField] private Animator animator;
+    [SerializeField] private Rigidbody hips;
 
     [Header("Joint strength")]
     [SerializeField] private float jointSpring = 1500f;
     [SerializeField] private float jointDamper = 60f;
 
     [Header("Balance")]
-    [Range(0f, 1f)] public float stability = 1f;       // the drunk meter will drive this
+    [Range(0f, 1f)] public float stability = 1f;
     [SerializeField] private float uprightStrength = 10000f;
     [SerializeField] private float turnStrength = 61f;
     [SerializeField] private float angularDamping = 27f;
@@ -29,8 +30,14 @@ public class ActiveRagdoll : NetworkBehaviour
     [SerializeField] private float responsiveness = 10f;
     [SerializeField] private float jumpSpeed = 6f;
 
+    [Header("Jump Animation")]
+    [SerializeField] private float jumpPreparationTime = 0.25f;
+
+    [Range(0f, 1f)]
+    [SerializeField] private float jumpPreparationSpeedMultiplier = 0.25f;
+
     [Header("Spawn")]
-    [SerializeField] private float spawnSpacing = 1.5f; // keeps players from spawning inside each other
+    [SerializeField] private float spawnSpacing = 1.5f;
 
     public Rigidbody Hips => hips;
 
@@ -42,15 +49,26 @@ public class ActiveRagdoll : NetworkBehaviour
     }
 
     private readonly List<Bone> bones = new();
-    private static readonly int SpeedHash = Animator.StringToHash("Speed");
 
-    private Vector3 hipsUpLocal, hipsForwardLocal;
+    private static readonly int SpeedHash =
+        Animator.StringToHash("Speed");
+
+    private static readonly int JumpHash =
+        Animator.StringToHash("Jump");
+
+    private Vector3 hipsUpLocal;
+    private Vector3 hipsForwardLocal;
     private Vector3 lastHipsPos;
     private float rideHeight;
-    private Vector3 moveDir, desiredDirection;
-    private bool sprint, jumpRequested;
 
-    // Right-click the component header and run this once, in Prefab Mode.
+    private Vector3 moveDir;
+    private Vector3 desiredDirection;
+
+    private bool sprint;
+    private bool jumpRequested;
+    private bool jumpPreparing;
+    private float jumpPreparationTimer;
+
     [ContextMenu("Convert CharacterJoints to ConfigurableJoints")]
     private void ConvertJoints()
     {
@@ -58,30 +76,44 @@ public class ActiveRagdoll : NetworkBehaviour
         {
             GameObject go = old.gameObject;
             Rigidbody parentRb = old.connectedBody;
+
             DestroyImmediate(old);
 
-            var j = go.AddComponent<ConfigurableJoint>();
-            j.connectedBody = parentRb;
-            j.xMotion = j.yMotion = j.zMotion = ConfigurableJointMotion.Locked;
-            j.angularXMotion = j.angularYMotion = j.angularZMotion = ConfigurableJointMotion.Free;
-            j.rotationDriveMode = RotationDriveMode.Slerp;
-            j.projectionMode = JointProjectionMode.PositionAndRotation;
+            var joint = go.AddComponent<ConfigurableJoint>();
+            joint.connectedBody = parentRb;
+
+            joint.xMotion = ConfigurableJointMotion.Locked;
+            joint.yMotion = ConfigurableJointMotion.Locked;
+            joint.zMotion = ConfigurableJointMotion.Locked;
+
+            joint.angularXMotion = ConfigurableJointMotion.Free;
+            joint.angularYMotion = ConfigurableJointMotion.Free;
+            joint.angularZMotion = ConfigurableJointMotion.Free;
+
+            joint.rotationDriveMode = RotationDriveMode.Slerp;
+            joint.projectionMode = JointProjectionMode.PositionAndRotation;
         }
     }
 
     public override void OnNetworkSpawn()
     {
         if (IsOwner)
-            transform.position += new Vector3(OwnerClientId * spawnSpacing, 0f, 0f);
+        {
+            transform.position +=
+                new Vector3(OwnerClientId * spawnSpacing, 0f, 0f);
+        }
 
-        // Map each physics joint to the same-named bone on the animated rig.
         var animatedByName = new Dictionary<string, Transform>();
-        foreach (var t in animatedRoot.GetComponentsInChildren<Transform>())
-            animatedByName[t.name] = t;
+
+        foreach (var bone in animatedRoot.GetComponentsInChildren<Transform>())
+        {
+            animatedByName[bone.name] = bone;
+        }
 
         foreach (var joint in physicsRoot.GetComponentsInChildren<ConfigurableJoint>())
         {
-            if (!animatedByName.TryGetValue(joint.name, out var target)) continue;
+            if (!animatedByName.TryGetValue(joint.name, out var target))
+                continue;
 
             joint.slerpDrive = new JointDrive
             {
@@ -98,8 +130,11 @@ public class ActiveRagdoll : NetworkBehaviour
             });
         }
 
-        foreach (var r in animatedRoot.GetComponentsInChildren<Renderer>())
-            r.enabled = false;
+        foreach (var renderer in animatedRoot.GetComponentsInChildren<Renderer>())
+        {
+            renderer.enabled = false;
+        }
+
         animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
         foreach (var rb in physicsRoot.GetComponentsInChildren<Rigidbody>())
@@ -109,15 +144,18 @@ public class ActiveRagdoll : NetworkBehaviour
             rb.solverVelocityIterations = 4;
         }
 
-        // Only the owner simulates the body. On other screens the hips just follow
-        // the NetworkTransform, and the limbs chase the pose locally.
         hips.isKinematic = !IsOwner;
-        hips.interpolation = IsOwner ? RigidbodyInterpolation.Interpolate
-                                     : RigidbodyInterpolation.None;
 
-        // Bone axes are arbitrary, so remember which hips axis is "up" and "forward".
-        hipsUpLocal = hips.transform.InverseTransformDirection(Vector3.up);
-        hipsForwardLocal = hips.transform.InverseTransformDirection(transform.forward);
+        hips.interpolation = IsOwner
+            ? RigidbodyInterpolation.Interpolate
+            : RigidbodyInterpolation.None;
+
+        hipsUpLocal =
+            hips.transform.InverseTransformDirection(Vector3.up);
+
+        hipsForwardLocal =
+            hips.transform.InverseTransformDirection(transform.forward);
+
         rideHeight = hips.position.y - transform.position.y;
         desiredDirection = transform.forward;
         lastHipsPos = hips.transform.position;
@@ -125,115 +163,282 @@ public class ActiveRagdoll : NetworkBehaviour
 
     private void Update()
     {
-    
+        if (!IsSpawned)
+            return;
 
-        if (!IsSpawned) return;
-
-        // Movement measured from the hips, used for other players' animation.
         Vector3 pos = hips.transform.position;
         Vector3 delta = pos - lastHipsPos;
         delta.y = 0f;
         lastHipsPos = pos;
 
-        float animSpeed = Time.deltaTime > 0f ? delta.magnitude / Time.deltaTime : 0f;
+        float animSpeed = Time.deltaTime > 0f
+            ? delta.magnitude / Time.deltaTime
+            : 0f;
 
         if (IsOwner)
         {
-            var kb = Keyboard.current;
-            if (kb != null && Camera.main != null)
+            var keyboard = Keyboard.current;
+
+            if (keyboard != null && Camera.main != null)
             {
                 Vector2 input = new Vector2(
-                    (kb.dKey.isPressed ? 1f : 0f) - (kb.aKey.isPressed ? 1f : 0f),
-                    (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f));
+                    (keyboard.dKey.isPressed ? 1f : 0f) -
+                    (keyboard.aKey.isPressed ? 1f : 0f),
+
+                    (keyboard.wKey.isPressed ? 1f : 0f) -
+                    (keyboard.sKey.isPressed ? 1f : 0f)
+                );
+
                 input = Vector2.ClampMagnitude(input, 1f);
 
                 Transform cam = Camera.main.transform;
-                Vector3 f = cam.forward; f.y = 0f; f.Normalize();
-                Vector3 r = cam.right; r.y = 0f; r.Normalize();
 
-                moveDir = f * input.y + r * input.x;
-                sprint = kb.leftShiftKey.isPressed;
-                if (kb.spaceKey.wasPressedThisFrame) jumpRequested = true;
-                if (moveDir.sqrMagnitude > 0.01f) desiredDirection = moveDir.normalized;
+                Vector3 forward = cam.forward;
+                forward.y = 0f;
+                forward.Normalize();
+
+                Vector3 right = cam.right;
+                right.y = 0f;
+                right.Normalize();
+
+                moveDir = forward * input.y + right * input.x;
+
+                sprint = keyboard.leftShiftKey.isPressed;
+
+                if (keyboard.spaceKey.wasPressedThisFrame)
+                {
+                    jumpRequested = true;
+                }
+
+                if (moveDir.sqrMagnitude > 0.01f)
+                {
+                    desiredDirection = moveDir.normalized;
+                }
             }
             else
             {
                 moveDir = Vector3.zero;
             }
 
-            // Owner: animate from input, so falling or twitching can't keep the run going.
-            animSpeed = moveDir.magnitude * (sprint ? sprintSpeed : walkSpeed);
+            float speedMultiplier = jumpPreparing
+                ? jumpPreparationSpeedMultiplier
+                : 1f;
+
+            animSpeed = moveDir.magnitude *
+                (sprint ? sprintSpeed : walkSpeed) *
+                speedMultiplier;
         }
 
         if (animator.runtimeAnimatorController != null)
-            animator.SetFloat(SpeedHash, animSpeed, 0.1f, Time.deltaTime);
+        {
+            animator.SetFloat(
+                SpeedHash,
+                animSpeed,
+                0.1f,
+                Time.deltaTime
+            );
+        }
     }
 
     private void FixedUpdate()
     {
-        if (!IsSpawned) return;
+        if (!IsSpawned)
+            return;
 
-        // Limbs chase the animated pose (on every screen).
-        foreach (var b in bones)
-            b.joint.targetRotation =
-                Quaternion.Inverse(b.target.localRotation) * b.startLocalRotation;
+        foreach (var bone in bones)
+        {
+            bone.joint.targetRotation =
+                Quaternion.Inverse(bone.target.localRotation) *
+                bone.startLocalRotation;
+        }
 
-        if (!IsOwner) return;
+        if (!IsOwner)
+            return;
 
         bool grounded = CheckGround(out RaycastHit hit);
 
-        // Stay upright and face the movement direction.
-        Vector3 up = hips.transform.TransformDirection(hipsUpLocal);
-        Vector3 fwd = Vector3.ProjectOnPlane(
-            hips.transform.TransformDirection(hipsForwardLocal), Vector3.up);
+        Vector3 up =
+            hips.transform.TransformDirection(hipsUpLocal);
 
-        Vector3 torque = Vector3.Cross(up, Vector3.up) * uprightStrength;
-        if (fwd.sqrMagnitude > 0.001f)
+        Vector3 forward = Vector3.ProjectOnPlane(
+            hips.transform.TransformDirection(hipsForwardLocal),
+            Vector3.up
+        );
+
+        Vector3 torque =
+            Vector3.Cross(up, Vector3.up) * uprightStrength;
+
+        if (forward.sqrMagnitude > 0.001f)
         {
-            float yaw = Vector3.SignedAngle(fwd.normalized, desiredDirection, Vector3.up) * Mathf.Deg2Rad;
+            float yaw = Vector3.SignedAngle(
+                forward.normalized,
+                desiredDirection,
+                Vector3.up
+            ) * Mathf.Deg2Rad;
+
             torque += Vector3.up * yaw * turnStrength;
         }
+
         torque -= hips.angularVelocity * angularDamping;
+
         hips.AddTorque(torque * stability, ForceMode.Acceleration);
 
-        // Ride-height spring: keeps the hips off the ground.
-        Vector3 vel = hips.linearVelocity;
-        if (grounded && vel.y <= 1f)
+        // Ride-height spring.
+        Vector3 velocity = hips.linearVelocity;
+
+        if (grounded && velocity.y <= 1f)
         {
-            float err = rideHeight - hit.distance;
-            float push = Mathf.Max(0f, err * rideSpring - vel.y * rideDamper);
-            hips.AddForce(Vector3.up * push * stability, ForceMode.Acceleration);
+            float error = rideHeight - hit.distance;
+
+            float push = Mathf.Max(
+                0f,
+                error * rideSpring - velocity.y * rideDamper
+            );
+
+            hips.AddForce(
+                Vector3.up * push * stability,
+                ForceMode.Acceleration
+            );
         }
 
-        // Walk.
-        Vector3 planar = new Vector3(vel.x, 0f, vel.z);
-        Vector3 desired = moveDir * (sprint ? sprintSpeed : walkSpeed);
+        // Horizontal movement, slowed during jump preparation.
+        Vector3 planar = new Vector3(
+            velocity.x,
+            0f,
+            velocity.z
+        );
+
+        float preparationMultiplier = jumpPreparing
+            ? jumpPreparationSpeedMultiplier
+            : 1f;
+
+        Vector3 desiredVelocity =
+            moveDir *
+            (sprint ? sprintSpeed : walkSpeed) *
+            preparationMultiplier;
+
         float control = grounded ? 1f : 0.2f;
-        hips.AddForce((desired - planar) * responsiveness * control, ForceMode.Acceleration);
 
-        // Jump.
-        if (jumpRequested && grounded)
+        hips.AddForce(
+            (desiredVelocity - planar) * responsiveness * control,
+            ForceMode.Acceleration
+        );
+
+        // Begin jump preparation when Space is pressed.
+        if (jumpRequested && grounded && !jumpPreparing)
         {
-            vel.y = jumpSpeed;
-            hips.linearVelocity = vel;
+            jumpPreparing = true;
+            jumpPreparationTimer = jumpPreparationTime;
+
+            if (animator != null &&
+                animator.runtimeAnimatorController != null)
+            {
+                animator.SetTrigger(JumpHash);
+            }
+
+            PlayJumpAnimationServerRpc();
         }
+
         jumpRequested = false;
+
+        // Wait for the preparation animation before takeoff.
+        if (jumpPreparing)
+        {
+            jumpPreparationTimer -= Time.fixedDeltaTime;
+
+            if (jumpPreparationTimer <= 0f)
+            {
+                jumpPreparing = false;
+
+                if (CheckGround(out _))
+                {
+                    Vector3 jumpVelocity = hips.linearVelocity;
+                    jumpVelocity.y = jumpSpeed;
+                    hips.linearVelocity = jumpVelocity;
+                }
+            }
+        }
+    }
+
+    [ServerRpc]
+    private void PlayJumpAnimationServerRpc()
+    {
+        PlayJumpAnimationClientRpc();
+    }
+
+    [ClientRpc]
+    private void PlayJumpAnimationClientRpc()
+    {
+        if (IsOwner)
+            return;
+
+        if (animator == null ||
+            animator.runtimeAnimatorController == null)
+            return;
+
+        animator.SetTrigger(JumpHash);
     }
 
     private bool CheckGround(out RaycastHit best)
     {
         best = default;
+
         bool found = false;
         float closest = float.MaxValue;
 
-        var hits = Physics.RaycastAll(hips.position, Vector3.down, rideHeight + 0.4f,
-            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        RaycastHit[] hits = Physics.RaycastAll(
+            hips.position,
+            Vector3.down,
+            rideHeight + 0.4f,
+            Physics.DefaultRaycastLayers,
+            QueryTriggerInteraction.Ignore
+        );
 
-        foreach (var h in hits)
+        foreach (var hit in hits)
         {
-            if (h.transform.IsChildOf(transform)) continue; // ignore our own bones
-            if (h.distance < closest) { closest = h.distance; best = h; found = true; }
+            if (hit.transform.IsChildOf(transform))
+                continue;
+
+            if (hit.distance < closest)
+            {
+                closest = hit.distance;
+                best = hit;
+                found = true;
+            }
         }
+
         return found;
     }
+    
+   [ClientRpc]
+public void ApplySlapKnockbackClientRpc(
+    Vector3 direction,
+    float horizontalForce,
+    float verticalForce)
+{
+    Debug.Log(
+        $"[Slap Knockback] RPC received. IsOwner={IsOwner}, " +
+        $"ClientId={NetworkManager.LocalClientId}, HipsNull={hips == null}",
+        this);
+
+    // Only the owning client simulates this player's physical ragdoll.
+    if (!IsOwner || hips == null)
+        return;
+
+    Vector3 impulse =
+        direction.normalized * horizontalForce +
+        Vector3.up * verticalForce;
+
+    Debug.Log(
+        $"[Slap Knockback] Applying impulse {impulse}. " +
+        $"Before velocity={hips.linearVelocity}",
+        this);
+
+    hips.AddForce(impulse, ForceMode.Impulse);
+    Debug.Log(
+    $"[Slap Knockback] After impulse: velocity={hips.linearVelocity}, " +
+    $"kinematic={hips.isKinematic}",
+    this);
+}
+
 }
