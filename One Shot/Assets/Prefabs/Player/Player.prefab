@@ -929,7 +929,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 966569143
+  GlobalObjectIdHash: 3273270224
   InScenePlacedSourceGlobalObjectIdHash: 0
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
@@ -1036,12 +1036,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SlapController
   ShowTopMostFoldoutHeaderGroup: 1
   slapKey: 20
-  slapRange: 2
+  slapRange: 2.84
   impactDelay: 0.2
   slapCooldown: 0.8
-  forwardForce: 12
-  leftForce: 4
-  upwardForce: 4
+  forwardForce: 151.1
+  leftForce: 207.8
+  upwardForce: 339.5
 --- !u!1 &1769054305648978004
 GameObject:
   m_ObjectHideFlags: 0
