@@ -535,7 +535,7 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 516758044}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -745,7 +745,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MultiplayerManager
   joinInput: {fileID: 1385948275}
   statusText: {fileID: 516758046}
-  multiplayerUI: {fileID: 1902426824}
+  createButton: {fileID: 879505150}
+  joinButton: {fileID: 1276581688}
+  joinInputObject: {fileID: 1385948273}
 --- !u!1001 &799623736
 PrefabInstance:
   m_ObjectHideFlags: 0

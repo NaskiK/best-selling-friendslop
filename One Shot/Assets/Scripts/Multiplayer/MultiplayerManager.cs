@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using UnityEngine;
 using TMPro;
@@ -13,7 +13,11 @@ public class MultiplayerManager : MonoBehaviour
     [Header("UI")]
     [SerializeField] private TMP_InputField joinInput;
     [SerializeField] private TMP_Text statusText;
-    [SerializeField] private GameObject multiplayerUI;
+
+    [Header("Elements to Hide when game starts")]
+    [SerializeField] private GameObject createButton;
+    [SerializeField] private GameObject joinButton;
+    [SerializeField] private GameObject joinInputObject;
 
     private ISession currentSession;
 
@@ -74,10 +78,24 @@ public class MultiplayerManager : MonoBehaviour
             Debug.Log("GAME CREATED!");
             Debug.Log("Join Code: " + currentSession.Code);
 
-            // Keep the UI visible so Player 1 can see the code.
+            // 1. Преместваме текстовото поле в горния десен ъгъл
+            if (statusText != null)
+            {
+                RectTransform rectTransform = statusText.GetComponent<RectTransform>();
+                if (rectTransform != null)
+                {
+                    rectTransform.anchorMin = new Vector2(1, 1);
+                    rectTransform.anchorMax = new Vector2(1, 1);
+                    rectTransform.pivot = new Vector2(1, 1);
+                    rectTransform.anchoredPosition = new Vector2(-30, -30);
+                }
+            }
+
             SetStatus("Join Code: " + currentSession.Code);
 
-            // Watch for other players joining.
+            // 2. Скриваме САМО бутоните и полето за писане, а `statusText` си остава на екрана!
+            HideGameCreationElements();
+
             currentSession.Changed += OnSessionChanged;
         }
         catch (Exception e)
@@ -109,8 +127,8 @@ public class MultiplayerManager : MonoBehaviour
 
             SetStatus("Joined game!");
 
-            // Player 2 can hide their UI immediately.
-            HideMultiplayerUI();
+            // Скриваме бутоните и при успешно влизане
+            HideGameCreationElements();
         }
         catch (Exception e)
         {
@@ -124,25 +142,15 @@ public class MultiplayerManager : MonoBehaviour
         if (currentSession == null)
             return;
 
-        Debug.Log(
-            "Players in session: " +
-            currentSession.Players.Count
-        );
-
-        // Once at least 2 players are in the session,
-        // hide Player 1's UI too.
-        if (currentSession.Players.Count >= 2)
-        {
-            HideMultiplayerUI();
-        }
+        Debug.Log("Players in session: " + currentSession.Players.Count);
+        // Кодът си остава горе в дясно и никога не се маха сам.
     }
 
-    private void HideMultiplayerUI()
+    private void HideGameCreationElements()
     {
-        if (multiplayerUI != null)
-        {
-            multiplayerUI.SetActive(false);
-        }
+        if (createButton != null) createButton.SetActive(false);
+        if (joinButton != null) joinButton.SetActive(false);
+        if (joinInputObject != null) joinInputObject.SetActive(false);
     }
 
     private void SetStatus(string message)
