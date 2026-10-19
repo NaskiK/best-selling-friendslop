@@ -13,6 +13,10 @@ public class SlapController : NetworkBehaviour
     [SerializeField] private float impactDelay = 0.20f;
     [SerializeField] private float slapCooldown = 0.8f;
 
+    [Header("Slap Targeting")]
+    [SerializeField, Range(-1f, 1f)]
+    private float minimumFacingDot = -0.2f;
+
     [Header("Knockback")]
     [SerializeField] private float forwardForce = 12f;
     [SerializeField] private float leftForce = 4f;
@@ -40,69 +44,39 @@ public class SlapController : NetworkBehaviour
 
         if (animator == null)
             animator = GetComponentInChildren<Animator>(true);
-
-        if (activeRagdoll == null)
-            Debug.LogError(
-                "[Slap] ActiveRagdoll missing from Player root.", this);
-
-        if (animator == null)
-            Debug.LogError("[Slap] Animator not found.", this);
-        else
-            Debug.Log("[Slap] Animator found: " + animator.name, this);
-    }
-
-    public override void OnNetworkSpawn()
-    {
-        Debug.Log(
-            $"[Slap] Spawned: {name}, Owner={IsOwner}, " +
-            $"ClientId={OwnerClientId}, IsServer={IsServer}, " +
-            $"NetworkObjectId={NetworkObjectId}",
-            this);
     }
 
     private void Update()
-    {
-        if (!IsSpawned || !IsOwner || Keyboard.current == null)
-            return;
+{
+    if (!IsSpawned || !IsOwner || Keyboard.current == null)
+        return;
 
-        if (!Keyboard.current[slapKey].wasPressedThisFrame)
-            return;
+    if (!Keyboard.current[slapKey].wasPressedThisFrame)
+        return;
 
-        Debug.Log("[Slap] F pressed by local owner.", this);
+    if (Time.time < nextSlapTime)
+        return;
 
-        if (Time.time < nextSlapTime)
-            return;
+    // Always play the animation when F is pressed.
+    PlaySlapAnimation();
 
-        nextSlapTime = Time.time + slapCooldown;
+    ActiveRagdoll target = FindTarget();
 
-        PlaySlapAnimation();
+    // No target means no cooldown and no slap request.
+    if (target == null)
+        return;
 
-        ActiveRagdoll target = FindTarget();
+    NetworkObject targetObject =
+        target.GetComponent<NetworkObject>();
 
-        if (target == null)
-        {
-            Debug.LogWarning("[Slap] No target found.", this);
-            return;
-        }
+    if (targetObject == null)
+        return;
 
-        NetworkObject targetObject =
-            target.GetComponent<NetworkObject>();
+    // Start cooldown only when a valid target is found.
+    nextSlapTime = Time.time + slapCooldown;
 
-        if (targetObject == null)
-        {
-            Debug.LogWarning(
-                "[Slap] Target has no NetworkObject on its root.", target);
-            return;
-        }
-
-        Debug.Log(
-            $"[Slap] Target selected: {targetObject.name}, " +
-            $"ID={targetObject.NetworkObjectId}, " +
-            $"Owner={targetObject.OwnerClientId}",
-            this);
-
-        RequestSlapServerRpc(targetObject.NetworkObjectId);
-    }
+    RequestSlapServerRpc(targetObject.NetworkObjectId);
+}
 
     private void PlaySlapAnimation()
     {
@@ -119,13 +93,11 @@ public class SlapController : NetworkBehaviour
             activeRagdoll == null ||
             activeRagdoll.Hips == null)
         {
-            Debug.LogWarning(
-                "[Slap] NetworkManager, ActiveRagdoll, or Hips missing.",
-                this);
             return null;
         }
 
         Vector3 origin = activeRagdoll.Hips.position;
+
         Vector3 forward = transform.forward;
         forward.y = 0f;
 
@@ -140,11 +112,6 @@ public class SlapController : NetworkBehaviour
 
         var spawnedObjects =
             NetworkManager.Singleton.SpawnManager.SpawnedObjects;
-
-        Debug.Log(
-            $"[Slap] Searching {spawnedObjects.Count} spawned objects. " +
-            $"Origin={origin}, Forward={forward}",
-            this);
 
         foreach (NetworkObject candidate in spawnedObjects.Values)
         {
@@ -166,19 +133,15 @@ public class SlapController : NetworkBehaviour
 
             float distance = offset.magnitude;
 
-            float facing = distance > 0.001f
-                ? Vector3.Dot(forward, offset.normalized)
-                : 1f;
-
-            Debug.Log(
-                $"[Slap] Candidate {candidate.name}: " +
-                $"distance={distance:F2}, facing={facing:F2}",
-                candidate);
-
             if (distance > slapRange || distance < 0.001f)
                 continue;
 
-            if (facing < 0.15f)
+            float facing = Vector3.Dot(
+                forward,
+                offset.normalized
+            );
+
+            if (facing < minimumFacingDot)
                 continue;
 
             if (distance < closestDistance)
@@ -194,15 +157,8 @@ public class SlapController : NetworkBehaviour
     [ServerRpc]
     private void RequestSlapServerRpc(ulong targetNetworkObjectId)
     {
-        Debug.Log(
-            $"[Slap] ServerRpc received for target ID={targetNetworkObjectId}.",
-            this);
-
         if (Time.time < serverNextSlapTime)
-        {
-            Debug.Log("[Slap] Server rejected slap: cooldown.", this);
             return;
-        }
 
         NetworkManager manager = NetworkManager.Singleton;
 
@@ -210,45 +166,41 @@ public class SlapController : NetworkBehaviour
             !manager.SpawnManager.SpawnedObjects.TryGetValue(
                 targetNetworkObjectId, out NetworkObject targetObject))
         {
-            Debug.LogWarning(
-                "[Slap] Server could not find target NetworkObject.", this);
             return;
         }
 
         ActiveRagdoll target =
             targetObject.GetComponent<ActiveRagdoll>();
 
-        if (target == null || target.Hips == null ||
-            activeRagdoll == null || activeRagdoll.Hips == null)
+        if (target == null ||
+            target.Hips == null ||
+            activeRagdoll == null ||
+            activeRagdoll.Hips == null)
         {
-            Debug.LogWarning(
-                "[Slap] Server could not find target or attacker Hips.",
-                this);
             return;
         }
 
-        Vector3 offset = target.Hips.position - activeRagdoll.Hips.position;
+        Vector3 offset =
+            target.Hips.position - activeRagdoll.Hips.position;
+
         offset.y = 0f;
 
         if (offset.magnitude > slapRange + 0.5f ||
             offset.sqrMagnitude < 0.001f)
         {
-            Debug.LogWarning(
-                $"[Slap] Server rejected distance: {offset.magnitude:F2}.",
-                this);
             return;
         }
 
         Vector3 forward = transform.forward;
         forward.y = 0f;
+
+        if (forward.sqrMagnitude < 0.001f)
+            return;
+
         forward.Normalize();
 
-        if (Vector3.Dot(forward, offset.normalized) < 0.15f)
-        {
-            Debug.LogWarning(
-                "[Slap] Server rejected target: not in front.", this);
+        if (Vector3.Dot(forward, offset.normalized) < minimumFacingDot)
             return;
-        }
 
         serverNextSlapTime = Time.time + slapCooldown;
 
@@ -263,17 +215,15 @@ public class SlapController : NetworkBehaviour
 
         float horizontalForce = Mathf.Sqrt(
             forwardForce * forwardForce +
-            leftForce * leftForce);
-
-        Debug.Log(
-            $"[Slap] Server accepted slap. Target={targetObject.name}, " +
-            $"TargetOwner={targetObject.OwnerClientId}, " +
-            $"Direction={direction}, HorizontalForce={horizontalForce}, " +
-            $"VerticalForce={upwardForce}",
-            this);
+            leftForce * leftForce
+        );
 
         StartCoroutine(ApplySlapAfterDelay(
-            target, direction, horizontalForce, upwardForce));
+            target,
+            direction,
+            horizontalForce,
+            upwardForce
+        ));
     }
 
     private IEnumerator ApplySlapAfterDelay(
@@ -284,18 +234,20 @@ public class SlapController : NetworkBehaviour
     {
         yield return new WaitForSeconds(impactDelay);
 
-        Debug.Log(
-            $"[Slap] Impact delay finished. " +
-            $"Target valid={target != null}, " +
-            $"Target spawned={(target != null && target.IsSpawned)}, " +
-            $"Hips valid={(target != null && target.Hips != null)}",
-            this);
-
-        if (target == null || !target.IsSpawned || target.Hips == null)
+        // Do not recheck distance or facing.
+        // The accepted slap still lands if the victim moves away.
+        if (target == null ||
+            !target.IsSpawned ||
+            target.Hips == null)
+        {
             yield break;
+        }
 
         target.ApplySlapKnockbackClientRpc(
-            direction, horizontalForce, verticalForce);
+            direction,
+            horizontalForce,
+            verticalForce
+        );
     }
 
     [ClientRpc]
@@ -308,7 +260,10 @@ public class SlapController : NetworkBehaviour
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.red;
+
         Gizmos.DrawWireSphere(
-            transform.position + Vector3.up, slapRange);
+            transform.position + Vector3.up,
+            slapRange
+        );
     }
 }
