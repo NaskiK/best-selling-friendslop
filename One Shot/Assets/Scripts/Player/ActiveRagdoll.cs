@@ -17,7 +17,9 @@ public class ActiveRagdoll : NetworkBehaviour
     [SerializeField] private float jointDamper = 60f;
 
     [Header("Balance")]
-    [Range(0f, 1f)] public float stability = 1f;
+    [Range(0f, 1f)]
+    public float stability = 1f;
+
     [SerializeField] private float uprightStrength = 10000f;
     [SerializeField] private float turnStrength = 61f;
     [SerializeField] private float angularDamping = 27f;
@@ -39,6 +41,18 @@ public class ActiveRagdoll : NetworkBehaviour
     [Header("Spawn")]
     [SerializeField] private float spawnSpacing = 1.5f;
 
+    [Header("Slap Chaos")]
+    [SerializeField] private float chaosDuration = 1.8f;
+    [Range(0f, 1f)]
+    [SerializeField] private float chaosJointStrength = 0.03f;
+    [Range(0f, 1f)]
+    [SerializeField] private float chaosControlStrength = 0.01f;
+
+    [SerializeField] private float bodySpinImpulse = 25f;
+    [SerializeField] private float limbSpinImpulse = 10f;
+    [SerializeField] private float extraLaunchImpulse = 2f;
+    [SerializeField] private float extraUpwardImpulse = 2f;
+
     public Rigidbody Hips => hips;
 
     private class Bone
@@ -46,9 +60,11 @@ public class ActiveRagdoll : NetworkBehaviour
         public ConfigurableJoint joint;
         public Transform target;
         public Quaternion startLocalRotation;
+        public JointDrive originalSlerpDrive;
     }
 
     private readonly List<Bone> bones = new();
+    private Rigidbody[] physicsBodies;
 
     private static readonly int SpeedHash =
         Animator.StringToHash("Speed");
@@ -68,6 +84,8 @@ public class ActiveRagdoll : NetworkBehaviour
     private bool jumpRequested;
     private bool jumpPreparing;
     private float jumpPreparationTimer;
+
+    private float chaosTimer;
 
     [ContextMenu("Convert CharacterJoints to ConfigurableJoints")]
     private void ConvertJoints()
@@ -126,9 +144,13 @@ public class ActiveRagdoll : NetworkBehaviour
             {
                 joint = joint,
                 target = target,
-                startLocalRotation = joint.transform.localRotation
+                startLocalRotation = joint.transform.localRotation,
+                originalSlerpDrive = joint.slerpDrive
             });
         }
+
+        physicsBodies =
+            physicsRoot.GetComponentsInChildren<Rigidbody>();
 
         foreach (var renderer in animatedRoot.GetComponentsInChildren<Renderer>())
         {
@@ -137,7 +159,7 @@ public class ActiveRagdoll : NetworkBehaviour
 
         animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
-        foreach (var rb in physicsRoot.GetComponentsInChildren<Rigidbody>())
+        foreach (var rb in physicsBodies)
         {
             rb.interpolation = RigidbodyInterpolation.Interpolate;
             rb.solverIterations = 12;
@@ -255,6 +277,23 @@ public class ActiveRagdoll : NetworkBehaviour
         if (!IsOwner)
             return;
 
+        if (chaosTimer > 0f)
+        {
+            chaosTimer -= Time.fixedDeltaTime;
+
+            if (chaosTimer <= 0f)
+            {
+                chaosTimer = 0f;
+                SetChaosJointStrength(1f);
+            }
+        }
+
+        bool inChaos = chaosTimer > 0f;
+
+        float controlStrength = inChaos
+            ? chaosControlStrength
+            : 1f;
+
         bool grounded = CheckGround(out RaycastHit hit);
 
         Vector3 up =
@@ -266,7 +305,8 @@ public class ActiveRagdoll : NetworkBehaviour
         );
 
         Vector3 torque =
-            Vector3.Cross(up, Vector3.up) * uprightStrength;
+            Vector3.Cross(up, Vector3.up) *
+            uprightStrength * controlStrength;
 
         if (forward.sqrMagnitude > 0.001f)
         {
@@ -276,10 +316,12 @@ public class ActiveRagdoll : NetworkBehaviour
                 Vector3.up
             ) * Mathf.Deg2Rad;
 
-            torque += Vector3.up * yaw * turnStrength;
+            torque += Vector3.up *
+                yaw * turnStrength * controlStrength;
         }
 
-        torque -= hips.angularVelocity * angularDamping;
+        torque -= hips.angularVelocity *
+            angularDamping * controlStrength;
 
         hips.AddTorque(torque * stability, ForceMode.Acceleration);
 
@@ -296,12 +338,12 @@ public class ActiveRagdoll : NetworkBehaviour
             );
 
             hips.AddForce(
-                Vector3.up * push * stability,
+                Vector3.up * push * stability * controlStrength,
                 ForceMode.Acceleration
             );
         }
 
-        // Horizontal movement, slowed during jump preparation.
+        // Horizontal movement.
         Vector3 planar = new Vector3(
             velocity.x,
             0f,
@@ -320,12 +362,14 @@ public class ActiveRagdoll : NetworkBehaviour
         float control = grounded ? 1f : 0.2f;
 
         hips.AddForce(
-            (desiredVelocity - planar) * responsiveness * control,
+            (desiredVelocity - planar) *
+            responsiveness * control * controlStrength,
             ForceMode.Acceleration
         );
 
-        // Begin jump preparation when Space is pressed.
-        if (jumpRequested && grounded && !jumpPreparing)
+        // Begin jump preparation.
+        if (jumpRequested && grounded &&
+            !jumpPreparing && !inChaos)
         {
             jumpPreparing = true;
             jumpPreparationTimer = jumpPreparationTime;
@@ -341,7 +385,7 @@ public class ActiveRagdoll : NetworkBehaviour
 
         jumpRequested = false;
 
-        // Wait for the preparation animation before takeoff.
+        // Jump after preparation.
         if (jumpPreparing)
         {
             jumpPreparationTimer -= Time.fixedDeltaTime;
@@ -357,6 +401,60 @@ public class ActiveRagdoll : NetworkBehaviour
                     hips.linearVelocity = jumpVelocity;
                 }
             }
+        }
+    }
+
+    private void SetChaosJointStrength(float multiplier)
+    {
+        foreach (var bone in bones)
+        {
+            if (bone.joint == null)
+                continue;
+
+            JointDrive drive = bone.originalSlerpDrive;
+            drive.positionSpring *= multiplier;
+            drive.positionDamper *= multiplier;
+
+            bone.joint.slerpDrive = drive;
+        }
+    }
+
+    private void TriggerSlapChaos(Vector3 direction)
+    {
+        chaosTimer = chaosDuration;
+        SetChaosJointStrength(chaosJointStrength);
+
+        Vector3 launchDirection = direction.sqrMagnitude > 0.001f
+            ? direction.normalized
+            : transform.forward;
+
+        // Extra launch for a more exaggerated slap.
+        hips.AddForce(
+            launchDirection * extraLaunchImpulse +
+            Vector3.up * extraUpwardImpulse,
+            ForceMode.Impulse
+        );
+
+        // Spin the entire body in a random direction.
+        hips.AddTorque(
+            Random.onUnitSphere * bodySpinImpulse,
+            ForceMode.Impulse
+        );
+
+        // Flail the arms, legs and torso independently.
+        if (physicsBodies == null)
+            return;
+
+        foreach (Rigidbody body in physicsBodies)
+        {
+            if (body == null || body == hips || body.isKinematic)
+                continue;
+
+            body.AddTorque(
+                Random.onUnitSphere *
+                Random.Range(limbSpinImpulse * 0.4f, limbSpinImpulse),
+                ForceMode.Impulse
+            );
         }
     }
 
@@ -409,36 +507,22 @@ public class ActiveRagdoll : NetworkBehaviour
 
         return found;
     }
-    
-   [ClientRpc]
-public void ApplySlapKnockbackClientRpc(
-    Vector3 direction,
-    float horizontalForce,
-    float verticalForce)
-{
-    Debug.Log(
-        $"[Slap Knockback] RPC received. IsOwner={IsOwner}, " +
-        $"ClientId={NetworkManager.LocalClientId}, HipsNull={hips == null}",
-        this);
 
-    // Only the owning client simulates this player's physical ragdoll.
-    if (!IsOwner || hips == null)
-        return;
+    [ClientRpc]
+    public void ApplySlapKnockbackClientRpc(
+        Vector3 direction,
+        float horizontalForce,
+        float verticalForce)
+    {
+        if (!IsOwner || hips == null)
+            return;
 
-    Vector3 impulse =
-        direction.normalized * horizontalForce +
-        Vector3.up * verticalForce;
+        Vector3 impulse =
+            direction.normalized * horizontalForce +
+            Vector3.up * verticalForce;
 
-    Debug.Log(
-        $"[Slap Knockback] Applying impulse {impulse}. " +
-        $"Before velocity={hips.linearVelocity}",
-        this);
+        hips.AddForce(impulse, ForceMode.Impulse);
 
-    hips.AddForce(impulse, ForceMode.Impulse);
-    Debug.Log(
-    $"[Slap Knockback] After impulse: velocity={hips.linearVelocity}, " +
-    $"kinematic={hips.isKinematic}",
-    this);
-}
-
+        TriggerSlapChaos(direction);
+    }
 }
