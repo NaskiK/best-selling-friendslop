@@ -12,14 +12,17 @@ public class MultiplayerManager : MonoBehaviour
 
     [Header("UI")]
     [SerializeField] private TMP_InputField joinInput;
+    [SerializeField] private TMP_InputField nameInput; // Ново поле за въвеждане на име
     [SerializeField] private TMP_Text statusText;
 
     [Header("Elements to Hide when game starts")]
     [SerializeField] private GameObject createButton;
     [SerializeField] private GameObject joinButton;
     [SerializeField] private GameObject joinInputObject;
+    [SerializeField] private GameObject nameInputObject; // Обектът на полето за име, за да го скрием след вход
 
     private ISession currentSession;
+    public string PlayerName { get; private set; } = "Player";
 
     private async void Awake()
     {
@@ -52,6 +55,12 @@ public class MultiplayerManager : MonoBehaviour
             Debug.Log("Unity Services initialized.");
             Debug.Log("Player ID: " + AuthenticationService.Instance.PlayerId);
 
+            // Зареждаме запазено име, ако има такова
+            if (PlayerPrefs.HasKey("PlayerName") && nameInput != null)
+            {
+                nameInput.text = PlayerPrefs.GetString("PlayerName");
+            }
+
             SetStatus("Ready");
         }
         catch (Exception e)
@@ -61,15 +70,36 @@ public class MultiplayerManager : MonoBehaviour
         }
     }
 
+    private bool ValidateAndSaveName()
+    {
+        if (nameInput != null)
+        {
+            string enteredName = nameInput.text.Trim();
+            if (string.IsNullOrEmpty(enteredName))
+            {
+                SetStatus("Моля въведете име преди да продължите!");
+                return false;
+            }
+            PlayerName = enteredName;
+            PlayerPrefs.SetString("PlayerName", PlayerName);
+            PlayerPrefs.Save();
+        }
+        return true;
+    }
+
     public async void CreateGame()
     {
+        if (!ValidateAndSaveName()) return;
+
         SetStatus("Creating game...");
 
         try
         {
             var options = new SessionOptions
             {
-                MaxPlayers = 4
+                MaxPlayers = 4,
+                // Можем да добавим името на хоста към данните на сесията, ако е нужно
+                Name = PlayerName + "'s Game"
             }.WithRelayNetwork();
 
             currentSession =
@@ -78,7 +108,7 @@ public class MultiplayerManager : MonoBehaviour
             Debug.Log("GAME CREATED!");
             Debug.Log("Join Code: " + currentSession.Code);
 
-            // 1. Преместваме текстовото поле в горния десен ъгъл
+            // Преместваме текстовото поле в горния десен ъгъл
             if (statusText != null)
             {
                 RectTransform rectTransform = statusText.GetComponent<RectTransform>();
@@ -93,7 +123,7 @@ public class MultiplayerManager : MonoBehaviour
 
             SetStatus("Join Code: " + currentSession.Code);
 
-            // 2. Скриваме САМО бутоните и полето за писане, а `statusText` си остава на екрана!
+            // Скриваме бутоните и полетата
             HideGameCreationElements();
 
             currentSession.Changed += OnSessionChanged;
@@ -107,6 +137,8 @@ public class MultiplayerManager : MonoBehaviour
 
     public async void JoinGame()
     {
+        if (!ValidateAndSaveName()) return;
+
         string joinCode = joinInput.text.Trim();
 
         if (string.IsNullOrEmpty(joinCode))
@@ -127,7 +159,7 @@ public class MultiplayerManager : MonoBehaviour
 
             SetStatus("Joined game!");
 
-            // Скриваме бутоните и при успешно влизане
+            // Скриваме бутоните и полетата
             HideGameCreationElements();
         }
         catch (Exception e)
@@ -143,7 +175,6 @@ public class MultiplayerManager : MonoBehaviour
             return;
 
         Debug.Log("Players in session: " + currentSession.Players.Count);
-        // Кодът си остава горе в дясно и никога не се маха сам.
     }
 
     private void HideGameCreationElements()
@@ -151,6 +182,7 @@ public class MultiplayerManager : MonoBehaviour
         if (createButton != null) createButton.SetActive(false);
         if (joinButton != null) joinButton.SetActive(false);
         if (joinInputObject != null) joinInputObject.SetActive(false);
+        if (nameInputObject != null) nameInputObject.SetActive(false);
     }
 
     private void SetStatus(string message)
