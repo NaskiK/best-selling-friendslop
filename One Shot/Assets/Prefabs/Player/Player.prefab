@@ -1022,6 +1022,13 @@ MonoBehaviour:
   jumpPreparationTime: 0.8
   jumpPreparationSpeedMultiplier: 0.25
   spawnSpacing: 1.5
+  chaosDuration: 1.8
+  chaosJointStrength: 0.03
+  chaosControlStrength: 0.01
+  bodySpinImpulse: 100
+  limbSpinImpulse: 10
+  extraLaunchImpulse: 2
+  extraUpwardImpulse: 2
 --- !u!114 &3162253359911902270
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1036,9 +1043,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SlapController
   ShowTopMostFoldoutHeaderGroup: 1
   slapKey: 20
-  slapRange: 2.84
+  slapRange: 2
   impactDelay: 0.2
-  slapCooldown: 0.8
+  slapCooldown: 0.5
+  minimumFacingDot: -0.2
   forwardForce: 151.1
   leftForce: 207.8
   upwardForce: 339.5
