@@ -65,7 +65,6 @@ public class EnemyAI : MonoBehaviour
         }
         else
         {
-            // If we have a currentTarget, it is guaranteed to be within chaseRange
             agent.isStopped = false;
             agent.SetDestination(currentTarget.position);
         }
@@ -86,17 +85,24 @@ public class EnemyAI : MonoBehaviour
 
         foreach (GameObject playerObj in players)
         {
-            float distance = Vector3.Distance(transform.position, playerObj.transform.position);
+            
+            Transform targetPoint = playerObj.transform;
+            ActiveRagdoll ragdoll = playerObj.GetComponent<ActiveRagdoll>();
+            if (ragdoll != null && ragdoll.Hips != null)
+            {
+                targetPoint = ragdoll.Hips.transform;
+            }
 
-            // ONLY consider players that are inside chaseRange
+            float distance = Vector3.Distance(transform.position, targetPoint.position);
+
+            
             if (distance <= chaseRange && distance < closestDistance)
             {
                 closestDistance = distance;
-                bestTarget = playerObj.transform;
+                bestTarget = targetPoint;
             }
         }
 
-        // Assign the best valid target (will be null if everyone is out of range)
         currentTarget = bestTarget;
     }
 
