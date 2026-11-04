@@ -14,6 +14,10 @@ public class ThirdPersonCamera : MonoBehaviour
     [SerializeField] private float zoomStep = 0.5f;
     [SerializeField] private float zoomSmoothing = 10f;
 
+    [Header("First Person")]
+    [SerializeField] private float firstPersonHeight = 0.8f; // Height offset for first person view (closer to head)
+    private bool isFirstPerson = false;
+
     [Header("Rotation")]
     [SerializeField] private float mouseSensitivity = 0.25f;
     [SerializeField] private float minPitch = -30f;
@@ -44,9 +48,22 @@ public class ThirdPersonCamera : MonoBehaviour
                 return;
         }
 
+        HandleViewToggle();
         HandleMouseLook();
-        HandleZoom();
+        if (!isFirstPerson)
+        {
+            HandleZoom();
+        }
         UpdateCameraPosition();
+    }
+
+    private void HandleViewToggle()
+    {
+        var kb = Keyboard.current;
+        if (kb != null && kb.f5Key.wasPressedThisFrame)
+        {
+            isFirstPerson = !isFirstPerson;
+        }
     }
 
     private void FindLocalPlayer()
@@ -115,10 +132,25 @@ public class ThirdPersonCamera : MonoBehaviour
 
     private void UpdateCameraPosition()
     {
-        Vector3 targetPosition =
-            target.position + Vector3.up * targetHeight;
+        float activeHeight = isFirstPerson ? firstPersonHeight : targetHeight;
+        Vector3 targetPosition = target.position + Vector3.up * activeHeight;
 
         Quaternion cameraRotation = Quaternion.Euler(pitch, yaw, 0f);
+
+        if (isFirstPerson)
+        {
+            // In first person, snap directly to the target position without distance or collision checks
+            currentDistance = 0f;
+            transform.position = Vector3.SmoothDamp(
+                transform.position,
+                targetPosition,
+                ref currentVelocity,
+                positionSmoothTime
+            );
+            transform.rotation = cameraRotation;
+            return;
+        }
+
         Vector3 backward = cameraRotation * Vector3.back;
 
         // Find the nearest obstacle behind the player (ignoring our own bones).
