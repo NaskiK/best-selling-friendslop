@@ -43,10 +43,8 @@ public class ActiveRagdoll : NetworkBehaviour
 
     [Header("Slap Chaos")]
     [SerializeField] private float chaosDuration = 1.8f;
-
     [Range(0f, 1f)]
     [SerializeField] private float chaosJointStrength = 0.03f;
-
     [Range(0f, 1f)]
     [SerializeField] private float chaosControlStrength = 0.01f;
 
@@ -88,9 +86,6 @@ public class ActiveRagdoll : NetworkBehaviour
     private float jumpPreparationTimer;
 
     private float chaosTimer;
-
-    // Bat attack movement lock
-    private float attackMovementLockTimer;
 
     [ContextMenu("Convert CharacterJoints to ConfigurableJoints")]
     private void ConvertJoints()
@@ -188,20 +183,6 @@ public class ActiveRagdoll : NetworkBehaviour
         lastHipsPos = hips.transform.position;
     }
 
-    // Called by BatWeaponController when a swing starts.
-    public void BeginAttackMovementLock(float duration)
-    {
-        if (!IsOwner)
-            return;
-
-        attackMovementLockTimer =
-            Mathf.Max(attackMovementLockTimer, duration);
-
-        moveDir = Vector3.zero;
-        sprint = false;
-        jumpRequested = false;
-    }
-
     private void Update()
     {
         if (!IsSpawned)
@@ -218,54 +199,47 @@ public class ActiveRagdoll : NetworkBehaviour
 
         if (IsOwner)
         {
-            if (attackMovementLockTimer > 0f)
-            {
-                attackMovementLockTimer -= Time.deltaTime;
+            var keyboard = Keyboard.current;
 
-                moveDir = Vector3.zero;
-                sprint = false;
-                jumpRequested = false;
+            if (keyboard != null && Camera.main != null)
+            {
+                Vector2 input = new Vector2(
+                    (keyboard.dKey.isPressed ? 1f : 0f) -
+                    (keyboard.aKey.isPressed ? 1f : 0f),
+
+                    (keyboard.wKey.isPressed ? 1f : 0f) -
+                    (keyboard.sKey.isPressed ? 1f : 0f)
+                );
+
+                input = Vector2.ClampMagnitude(input, 1f);
+
+                Transform cam = Camera.main.transform;
+
+                Vector3 forward = cam.forward;
+                forward.y = 0f;
+                forward.Normalize();
+
+                Vector3 right = cam.right;
+                right.y = 0f;
+                right.Normalize();
+
+                moveDir = forward * input.y + right * input.x;
+
+                sprint = keyboard.leftShiftKey.isPressed;
+
+                if (keyboard.spaceKey.wasPressedThisFrame)
+                {
+                    jumpRequested = true;
+                }
+
+                if (moveDir.sqrMagnitude > 0.01f)
+                {
+                    desiredDirection = moveDir.normalized;
+                }
             }
             else
             {
-                var keyboard = Keyboard.current;
-
-                if (keyboard != null && Camera.main != null)
-                {
-                    Vector2 input = new Vector2(
-                        (keyboard.dKey.isPressed ? 1f : 0f) -
-                        (keyboard.aKey.isPressed ? 1f : 0f),
-
-                        (keyboard.wKey.isPressed ? 1f : 0f) -
-                        (keyboard.sKey.isPressed ? 1f : 0f)
-                    );
-
-                    input = Vector2.ClampMagnitude(input, 1f);
-
-                    Transform cam = Camera.main.transform;
-
-                    Vector3 forward = cam.forward;
-                    forward.y = 0f;
-                    forward.Normalize();
-
-                    Vector3 right = cam.right;
-                    right.y = 0f;
-                    right.Normalize();
-
-                    moveDir = forward * input.y + right * input.x;
-
-                    sprint = keyboard.leftShiftKey.isPressed;
-
-                    if (keyboard.spaceKey.wasPressedThisFrame)
-                        jumpRequested = true;
-
-                    if (moveDir.sqrMagnitude > 0.01f)
-                        desiredDirection = moveDir.normalized;
-                }
-                else
-                {
-                    moveDir = Vector3.zero;
-                }
+                moveDir = Vector3.zero;
             }
 
             float speedMultiplier = jumpPreparing
@@ -454,17 +428,20 @@ public class ActiveRagdoll : NetworkBehaviour
             ? direction.normalized
             : transform.forward;
 
+        // Extra launch for a more exaggerated slap.
         hips.AddForce(
             launchDirection * extraLaunchImpulse +
             Vector3.up * extraUpwardImpulse,
             ForceMode.Impulse
         );
 
+        // Spin the entire body in a random direction.
         hips.AddTorque(
             Random.onUnitSphere * bodySpinImpulse,
             ForceMode.Impulse
         );
 
+        // Flail the arms, legs and torso independently.
         if (physicsBodies == null)
             return;
 

@@ -4,127 +4,98 @@ using UnityEngine.AI;
 public class EnemyAI : MonoBehaviour
 {
     [Header("Detection & Attack Ranges")]
-    public float chaseRange = 15f;
+    [Tooltip("Distance at which the enemy notices and starts chasing the player.")]
+    public float chaseRange = 10f;
+
+    [Tooltip("Distance at which the enemy stops to attack.")]
     public float attackRange = 2f;
+
+    [Tooltip("Time in seconds between consecutive attacks.")]
     public float attackCooldown = 1.5f;
 
-    [Header("Multiplayer Targeting")]
-    [Tooltip("How often (in seconds) the enemy searches for the nearest player.")]
-    public float targetSearchInterval = 0.2f;
-
     [Header("Component References")]
+    public Transform player;
     public NavMeshAgent agent;
     public Animator animator;
 
-    private Transform currentTarget;
     private float lastAttackTime;
-    private float searchTimer;
 
     void Start()
     {
+        // Automatically fetch missing components on this GameObject or children
         if (agent == null) agent = GetComponent<NavMeshAgent>();
         if (animator == null) animator = GetComponentInChildren<Animator>();
+
+        // Find player by tag if not explicitly assigned in Inspector
+        if (player == null)
+        {
+            GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
+            if (playerObj != null)
+            {
+                player = playerObj.transform;
+            }
+            else
+            {
+                Debug.LogWarning("EnemyAI: No GameObject with tag 'Player' found in scene!");
+            }
+        }
     }
 
     void Update()
     {
-        // 1. Periodically search for the nearest valid player inside chase range
-        searchTimer += Time.deltaTime;
-        if (searchTimer >= targetSearchInterval)
-        {
-            FindClosestPlayer();
-            searchTimer = 0f;
-        }
+        if (player == null) return;
 
-        // 2. Drive Walk/Idle animation speed
+        // 1. Send current NavMesh movement speed to Animator for Idle <-> Walk blending
         float currentSpeed = agent.velocity.magnitude;
-        if (animator != null)
-        {
-            animator.SetFloat("Speed", currentSpeed);
-        }
+        animator.SetFloat("Speed", currentSpeed);
 
-        // 3. If no player is in range, remain idle
-        if (currentTarget == null)
-        {
-            agent.isStopped = true;
-            return;
-        }
+        // 2. Measure distance to player
+        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
 
-        float distanceToTarget = Vector3.Distance(transform.position, currentTarget.position);
-
-        // 4. Perform combat movement and attack logic
-        if (distanceToTarget <= attackRange)
+        // 3. Determine state based on distance
+        if (distanceToPlayer <= attackRange)
         {
+            // Inside Attack Range: Stop moving & Attack on cooldown
             agent.isStopped = true;
 
             if (Time.time >= lastAttackTime + attackCooldown)
             {
-                TriggerAttack();
+                AttackPlayer();
                 lastAttackTime = Time.time;
             }
         }
+        else if (distanceToPlayer <= chaseRange)
+        {
+            // Inside Chase Range: Move towards player
+            agent.isStopped = false;
+            agent.SetDestination(player.position);
+        }
         else
         {
-            agent.isStopped = false;
-            agent.SetDestination(currentTarget.position);
+            // Outside Range: Stand still in place
+            agent.isStopped = true;
         }
     }
 
-    void FindClosestPlayer()
+    void AttackPlayer()
     {
-        GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
+        // Smoothly rotate to face the player before swinging
+        Vector3 lookDirection = (player.position - transform.position).normalized;
+        lookDirection.y = 0; // Lock rotation to Y axis so the enemy doesn't tilt up/down
 
-        if (players.Length == 0)
-        {
-            currentTarget = null;
-            return;
-        }
-
-        float closestDistance = Mathf.Infinity;
-        Transform bestTarget = null;
-
-        foreach (GameObject playerObj in players)
-        {
-            
-            Transform targetPoint = playerObj.transform;
-            ActiveRagdoll ragdoll = playerObj.GetComponent<ActiveRagdoll>();
-            if (ragdoll != null && ragdoll.Hips != null)
-            {
-                targetPoint = ragdoll.Hips.transform;
-            }
-
-            float distance = Vector3.Distance(transform.position, targetPoint.position);
-
-            
-            if (distance <= chaseRange && distance < closestDistance)
-            {
-                closestDistance = distance;
-                bestTarget = targetPoint;
-            }
-        }
-
-        currentTarget = bestTarget;
-    }
-
-    void TriggerAttack()
-    {
-        if (currentTarget == null) return;
-
-        Vector3 lookDirection = (currentTarget.position - transform.position).normalized;
-        lookDirection.y = 0;
         if (lookDirection != Vector3.zero)
         {
             transform.rotation = Quaternion.LookRotation(lookDirection);
         }
 
-        if (animator != null)
-        {
-            animator.SetTrigger("Attack");
-        }
+        // Trigger the attack animation state
+        animator.SetTrigger("Attack");
     }
 
     void OnDrawGizmosSelected()
     {
+        // Visual debug spheres in Scene view:
+        // Yellow = Chase Detection Range | Red = Attack Range
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, chaseRange);
 
