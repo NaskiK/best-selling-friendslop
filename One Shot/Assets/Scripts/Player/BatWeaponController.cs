@@ -1,3 +1,6 @@
+
+using System.Collections;
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -12,6 +15,17 @@ public class BatWeaponController : NetworkBehaviour
     [Header("Attack")]
     [SerializeField] private float swingCooldown = 1f;
     [SerializeField] private float swingMovementLockDuration = 0.9f;
+    [SerializeField] private float impactDelay = 0.2f;
+    [SerializeField] private int damage = 25;
+
+    [Header("Server Hit Detection")]
+    [SerializeField] private Vector3 attackBoxCenter =
+        new Vector3(0f, 1f, 1f);
+
+    [SerializeField] private Vector3 attackBoxSize =
+        new Vector3(1.6f, 1.6f, 2f);
+
+    [SerializeField] private LayerMask hitLayers = ~0;
 
     private static readonly int BatSwingHash =
         Animator.StringToHash("BatSwing");
@@ -69,7 +83,6 @@ public class BatWeaponController : NetworkBehaviour
             !equipRequestPending)
         {
             equipRequestPending = true;
-
             RequestEquipServerRpc(!IsEquipped);
         }
 
@@ -79,7 +92,6 @@ public class BatWeaponController : NetworkBehaviour
             Time.time >= nextLocalSwingTime)
         {
             nextLocalSwingTime = Time.time + swingCooldown;
-
             RequestBatSwingServerRpc();
         }
     }
@@ -102,6 +114,8 @@ public class BatWeaponController : NetworkBehaviour
         nextServerSwingTime = Time.time + swingCooldown;
 
         PlayBatSwingClientRpc();
+
+        StartCoroutine(ApplyBatDamage());
     }
 
     [ClientRpc]
@@ -121,6 +135,39 @@ public class BatWeaponController : NetworkBehaviour
         }
     }
 
+    private IEnumerator ApplyBatDamage()
+    {
+        yield return new WaitForSeconds(impactDelay);
+
+        Vector3 center = transform.TransformPoint(attackBoxCenter);
+
+        Vector3 halfExtents = attackBoxSize * 0.5f;
+
+        Collider[] hits = Physics.OverlapBox(
+            center,
+            halfExtents,
+            transform.rotation,
+            hitLayers,
+            QueryTriggerInteraction.Collide
+        );
+
+        HashSet<EnemyHealth> hitEnemies = new HashSet<EnemyHealth>();
+
+        foreach (Collider hit in hits)
+        {
+            EnemyHealth enemy =
+                hit.GetComponentInParent<EnemyHealth>();
+
+            if (enemy == null || enemy.IsDead)
+                continue;
+
+            if (!hitEnemies.Add(enemy))
+                continue;
+
+            enemy.TakeDamage(damage);
+        }
+    }
+
     private void OnEquippedChanged(bool previous, bool current)
     {
         equipRequestPending = false;
@@ -131,5 +178,21 @@ public class BatWeaponController : NetworkBehaviour
     {
         if (batVisual != null)
             batVisual.SetActive(visible);
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.red;
+
+        Matrix4x4 oldMatrix = Gizmos.matrix;
+
+        Gizmos.matrix = transform.localToWorldMatrix;
+
+        Gizmos.DrawWireCube(
+            attackBoxCenter,
+            attackBoxSize
+        );
+
+        Gizmos.matrix = oldMatrix;
     }
 }

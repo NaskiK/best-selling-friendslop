@@ -1,63 +1,103 @@
+
+using System.Collections;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
 
-public class EnemyHealth : MonoBehaviour
+[RequireComponent(typeof(NetworkObject))]
+public class EnemyHealth : NetworkBehaviour
 {
     [Header("Health Settings")]
     [SerializeField] private int maxHealth = 50;
 
-    public int CurrentHealth { get; private set; }
-    public bool IsDead { get; private set; }
+    private NetworkVariable<int> currentHealth =
+        new NetworkVariable<int>(
+            50,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server
+        );
 
-    void Awake()
+    private NetworkVariable<bool> isDead =
+        new NetworkVariable<bool>(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server
+        );
+
+    public int CurrentHealth => currentHealth.Value;
+    public bool IsDead => isDead.Value;
+
+    private EnemyAI enemyAI;
+    private NavMeshAgent agent;
+    private Animator animator;
+
+    private void Awake()
     {
-        CurrentHealth = maxHealth;
+        enemyAI = GetComponent<EnemyAI>();
+        agent = GetComponent<NavMeshAgent>();
+        animator = GetComponentInChildren<Animator>();
     }
 
-    /// <summary>
-    /// Call this from weapon or attack scripts to deal damage to this enemy.
-    /// </summary>
+    public override void OnNetworkSpawn()
+    {
+        if (IsServer)
+            currentHealth.Value = maxHealth;
+    }
+
     public void TakeDamage(int damageAmount)
     {
-        if (IsDead) return;
+        if (!IsServer || IsDead)
+            return;
 
-        CurrentHealth -= damageAmount;
-        CurrentHealth = Mathf.Clamp(CurrentHealth, 0, maxHealth);
+        currentHealth.Value = Mathf.Max(
+            0,
+            currentHealth.Value - damageAmount
+        );
 
-        Debug.Log($"[{gameObject.name}] Took {damageAmount} damage. Health: {CurrentHealth}/{maxHealth}");
+        Debug.Log(
+            $"[{name}] Took {damageAmount} damage. " +
+            $"Health: {currentHealth.Value}/{maxHealth}"
+        );
 
-        if (CurrentHealth <= 0)
-        {
+        if (currentHealth.Value <= 0)
             Die();
-        }
     }
 
     private void Die()
     {
-        if (IsDead) return;
-        IsDead = true;
+        if (IsDead)
+            return;
 
-        Debug.Log($"[{gameObject.name}] Enemy died!");
+        isDead.Value = true;
 
-        // Disable AI script and NavMeshAgent so it stops moving/chasing
-        EnemyAI ai = GetComponent<EnemyAI>();
-        if (ai != null) ai.enabled = false;
+        Debug.Log($"[{name}] Enemy died!");
 
-        NavMeshAgent agent = GetComponent<NavMeshAgent>();
-        if (agent != null) agent.enabled = false;
+        if (enemyAI != null)
+            enemyAI.enabled = false;
 
-        // Disable main collider so the player doesn't bump into an invisible wall
-        Collider col = GetComponent<Collider>();
-        if (col != null) col.enabled = false;
+        if (agent != null)
+            agent.enabled = false;
 
-        // Trigger 'Die' parameter in Animator if you have a death animation set up
-        Animator animator = GetComponentInChildren<Animator>();
+        DieClientRpc();
+
+        StartCoroutine(DespawnAfterDeath());
+    }
+
+    [ClientRpc]
+    private void DieClientRpc()
+    {
         if (animator != null)
-        {
             animator.SetTrigger("Die");
-        }
 
-        // Destroy the enemy GameObject after 3 seconds
-        Destroy(gameObject, 3.0f);
+        foreach (Collider col in GetComponentsInChildren<Collider>())
+            col.enabled = false;
+    }
+
+    private IEnumerator DespawnAfterDeath()
+    {
+        yield return new WaitForSeconds(3f);
+
+        if (NetworkObject != null && NetworkObject.IsSpawned)
+            NetworkObject.Despawn(true);
     }
 }
