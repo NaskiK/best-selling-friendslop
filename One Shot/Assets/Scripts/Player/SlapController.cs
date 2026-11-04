@@ -1,4 +1,3 @@
-
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
@@ -27,6 +26,7 @@ public class SlapController : NetworkBehaviour
 
     private ActiveRagdoll activeRagdoll;
     private NetworkObject playerNetworkObject;
+    private BatWeaponController batWeaponController;
     private Animator animator;
 
     private float nextSlapTime;
@@ -36,6 +36,7 @@ public class SlapController : NetworkBehaviour
     {
         playerNetworkObject = GetComponent<NetworkObject>();
         activeRagdoll = GetComponent<ActiveRagdoll>();
+        batWeaponController = GetComponent<BatWeaponController>();
 
         Transform animatedRig = transform.Find("AnimatedRig");
 
@@ -47,36 +48,38 @@ public class SlapController : NetworkBehaviour
     }
 
     private void Update()
-{
-    if (!IsSpawned || !IsOwner || Keyboard.current == null)
-        return;
+    {
+        if (!IsSpawned || !IsOwner || Keyboard.current == null)
+            return;
 
-    if (!Keyboard.current[slapKey].wasPressedThisFrame)
-        return;
+        // Cannot slap while holding the bat.
+        if (batWeaponController != null &&
+            batWeaponController.IsEquipped)
+            return;
 
-    if (Time.time < nextSlapTime)
-        return;
+        if (!Keyboard.current[slapKey].wasPressedThisFrame)
+            return;
 
-    // Always play the animation when F is pressed.
-    PlaySlapAnimation();
+        if (Time.time < nextSlapTime)
+            return;
 
-    ActiveRagdoll target = FindTarget();
+        PlaySlapAnimation();
 
-    // No target means no cooldown and no slap request.
-    if (target == null)
-        return;
+        ActiveRagdoll target = FindTarget();
 
-    NetworkObject targetObject =
-        target.GetComponent<NetworkObject>();
+        if (target == null)
+            return;
 
-    if (targetObject == null)
-        return;
+        NetworkObject targetObject =
+            target.GetComponent<NetworkObject>();
 
-    // Start cooldown only when a valid target is found.
-    nextSlapTime = Time.time + slapCooldown;
+        if (targetObject == null)
+            return;
 
-    RequestSlapServerRpc(targetObject.NetworkObjectId);
-}
+        nextSlapTime = Time.time + slapCooldown;
+
+        RequestSlapServerRpc(targetObject.NetworkObjectId);
+    }
 
     private void PlaySlapAnimation()
     {
@@ -92,9 +95,7 @@ public class SlapController : NetworkBehaviour
         if (NetworkManager.Singleton == null ||
             activeRagdoll == null ||
             activeRagdoll.Hips == null)
-        {
             return null;
-        }
 
         Vector3 origin = activeRagdoll.Hips.position;
 
@@ -118,9 +119,7 @@ public class SlapController : NetworkBehaviour
             if (candidate == null ||
                 candidate == playerNetworkObject ||
                 !candidate.IsSpawned)
-            {
                 continue;
-            }
 
             ActiveRagdoll ragdoll =
                 candidate.GetComponent<ActiveRagdoll>();
@@ -128,7 +127,9 @@ public class SlapController : NetworkBehaviour
             if (ragdoll == null || ragdoll.Hips == null)
                 continue;
 
-            Vector3 offset = ragdoll.Hips.position - origin;
+            Vector3 offset =
+                ragdoll.Hips.position - origin;
+
             offset.y = 0f;
 
             float distance = offset.magnitude;
@@ -157,6 +158,11 @@ public class SlapController : NetworkBehaviour
     [ServerRpc]
     private void RequestSlapServerRpc(ulong targetNetworkObjectId)
     {
+        // Also validate equipped state on the server.
+        if (batWeaponController != null &&
+            batWeaponController.IsEquipped)
+            return;
+
         if (Time.time < serverNextSlapTime)
             return;
 
@@ -165,9 +171,7 @@ public class SlapController : NetworkBehaviour
         if (manager == null ||
             !manager.SpawnManager.SpawnedObjects.TryGetValue(
                 targetNetworkObjectId, out NetworkObject targetObject))
-        {
             return;
-        }
 
         ActiveRagdoll target =
             targetObject.GetComponent<ActiveRagdoll>();
@@ -176,9 +180,7 @@ public class SlapController : NetworkBehaviour
             target.Hips == null ||
             activeRagdoll == null ||
             activeRagdoll.Hips == null)
-        {
             return;
-        }
 
         Vector3 offset =
             target.Hips.position - activeRagdoll.Hips.position;
@@ -187,9 +189,7 @@ public class SlapController : NetworkBehaviour
 
         if (offset.magnitude > slapRange + 0.5f ||
             offset.sqrMagnitude < 0.001f)
-        {
             return;
-        }
 
         Vector3 forward = transform.forward;
         forward.y = 0f;
@@ -199,7 +199,8 @@ public class SlapController : NetworkBehaviour
 
         forward.Normalize();
 
-        if (Vector3.Dot(forward, offset.normalized) < minimumFacingDot)
+        if (Vector3.Dot(forward, offset.normalized) <
+            minimumFacingDot)
             return;
 
         serverNextSlapTime = Time.time + slapCooldown;
@@ -234,14 +235,10 @@ public class SlapController : NetworkBehaviour
     {
         yield return new WaitForSeconds(impactDelay);
 
-        // Do not recheck distance or facing.
-        // The accepted slap still lands if the victim moves away.
         if (target == null ||
             !target.IsSpawned ||
             target.Hips == null)
-        {
             yield break;
-        }
 
         target.ApplySlapKnockbackClientRpc(
             direction,
