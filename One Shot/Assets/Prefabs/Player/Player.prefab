@@ -893,6 +893,7 @@ GameObject:
   - component: {fileID: 3035916066940903283}
   - component: {fileID: 5763647018695076948}
   - component: {fileID: 3162253359911902270}
+  - component: {fileID: 3139823113730464743}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -929,7 +930,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 3273270224
+  GlobalObjectIdHash: 966569143
   InScenePlacedSourceGlobalObjectIdHash: 0
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
@@ -1050,6 +1051,23 @@ MonoBehaviour:
   forwardForce: 151.1
   leftForce: 207.8
   upwardForce: 339.5
+--- !u!114 &3139823113730464743
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1687913844004354383}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a3bc496848483ce4697ec7707a2bcb8b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BatWeaponController
+  ShowTopMostFoldoutHeaderGroup: 1
+  batVisual: {fileID: 7057050908235719065}
+  equipKey: 31
+  swingCooldown: 1
+  swingMovementLockDuration: 0.9
 --- !u!1 &1769054305648978004
 GameObject:
   m_ObjectHideFlags: 0
@@ -4847,27 +4865,27 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 332543073257460000, guid: 64759d2bfa2981d4b80548269cac537c, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.008000001
+      value: 0.007000001
       objectReference: {fileID: 0}
     - target: {fileID: 332543073257460000, guid: 64759d2bfa2981d4b80548269cac537c, type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.008
+      value: 0.007
       objectReference: {fileID: 0}
     - target: {fileID: 332543073257460000, guid: 64759d2bfa2981d4b80548269cac537c, type: 3}
       propertyPath: m_LocalScale.z
-      value: 0.008000002
+      value: 0.007000002
       objectReference: {fileID: 0}
     - target: {fileID: 332543073257460000, guid: 64759d2bfa2981d4b80548269cac537c, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0.00034999935
+      value: 0.00035
       objectReference: {fileID: 0}
     - target: {fileID: 332543073257460000, guid: 64759d2bfa2981d4b80548269cac537c, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.0019100064
+      value: 0.00152
       objectReference: {fileID: 0}
     - target: {fileID: 332543073257460000, guid: 64759d2bfa2981d4b80548269cac537c, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 332543073257460000, guid: 64759d2bfa2981d4b80548269cac537c, type: 3}
       propertyPath: m_LocalRotation.w
@@ -4906,6 +4924,11 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 64759d2bfa2981d4b80548269cac537c, type: 3}
+--- !u!1 &7057050908235719065 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1141309035379116954, guid: 64759d2bfa2981d4b80548269cac537c, type: 3}
+  m_PrefabInstance: {fileID: 7942398023970826755}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &7684406252424444707 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 332543073257460000, guid: 64759d2bfa2981d4b80548269cac537c, type: 3}
