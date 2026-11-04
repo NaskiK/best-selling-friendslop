@@ -8,15 +8,14 @@ public class PlayerNameTag : NetworkBehaviour
     [Header("References (автоматично се намират, ако са празни)")]
     [SerializeField] private TMP_Text nameText;      // NameText
     [SerializeField] private Transform tagRoot;      // NameCanvas
-    [SerializeField] private Transform followTarget; // Hips или Head от PhysicsRig
+    [SerializeField] private Transform followTarget; // Head от PhysicsRig
 
     [Header("Settings")]
-    [SerializeField] private float height = 1.2f;    // Hips ~1.2, Head ~0.5
+    [SerializeField] private float height = 0.5f;
     [SerializeField] private bool hideOwnTag = false;
 
     private Camera cam;
 
-    // Owner пише името, всички го четат
     private readonly NetworkVariable<FixedString32Bytes> playerName = new(
         default,
         NetworkVariableReadPermission.Everyone,
@@ -33,12 +32,21 @@ public class PlayerNameTag : NetworkBehaviour
             if (canvas != null) tagRoot = canvas.transform;
         }
 
-        // Ако няма зададена кост, взимаме първия Rigidbody от героя
         if (followTarget == null)
         {
             var rb = GetComponentInChildren<Rigidbody>();
             if (rb != null) followTarget = rb.transform;
         }
+
+        // Нулираме отместванията в канваса, за да решава само Height
+        if (nameText != null)
+        {
+            var rt = nameText.rectTransform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition3D = Vector3.zero;
+        }
+        if (tagRoot is RectTransform canvasRt)
+            canvasRt.pivot = new Vector2(0.5f, 0.5f);
     }
 
     public override void OnNetworkSpawn()
@@ -82,10 +90,7 @@ public class PlayerNameTag : NetworkBehaviour
 
         Transform target = followTarget != null ? followTarget : transform;
 
-        // Над героя в световни координати, без да се върти с костта
         tagRoot.position = target.position + Vector3.up * height;
-
-        // Billboard: същата ротация като камерата, текстът не е огледален
         tagRoot.rotation = cam.transform.rotation;
     }
 }
