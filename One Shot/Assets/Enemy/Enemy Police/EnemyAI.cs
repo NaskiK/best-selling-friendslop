@@ -1,7 +1,10 @@
+
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
 
-public class EnemyAI : MonoBehaviour
+[RequireComponent(typeof(NetworkObject))]
+public class EnemyAI : NetworkBehaviour
 {
     [Header("Detection & Attack Ranges")]
     public float chaseRange = 15f;
@@ -20,39 +23,62 @@ public class EnemyAI : MonoBehaviour
     private float lastAttackTime;
     private float searchTimer;
 
-    void Start()
+    private void Awake()
     {
-        if (agent == null) agent = GetComponent<NavMeshAgent>();
-        if (animator == null) animator = GetComponentInChildren<Animator>();
+        if (agent == null)
+            agent = GetComponent<NavMeshAgent>();
+
+        if (animator == null)
+            animator = GetComponentInChildren<Animator>();
     }
 
-    void Update()
+    public override void OnNetworkSpawn()
     {
-        // 1. Periodically search for the nearest valid player inside chase range
+        if (IsServer && agent != null && agent.enabled && agent.isOnNavMesh)
+        {
+            agent.isStopped = true;
+        }
+    }
+
+    private void Update()
+    {
+        // Only the server controls enemy AI.
+        if (!IsSpawned || !IsServer)
+            return;
+
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh)
+            return;
+
+        // 1. Periodically search for the nearest player.
         searchTimer += Time.deltaTime;
-        if (searchTimer >= targetSearchInterval)
+
+        if (searchTimer >= Mathf.Max(0.05f, targetSearchInterval))
         {
             FindClosestPlayer();
             searchTimer = 0f;
         }
 
-        // 2. Drive Walk/Idle animation speed
+        // 2. Update movement animation.
         float currentSpeed = agent.velocity.magnitude;
+
         if (animator != null)
         {
             animator.SetFloat("Speed", currentSpeed);
         }
 
-        // 3. If no player is in range, remain idle
+        // 3. No player in range: remain idle.
         if (currentTarget == null)
         {
             agent.isStopped = true;
             return;
         }
 
-        float distanceToTarget = Vector3.Distance(transform.position, currentTarget.position);
+        float distanceToTarget = Vector3.Distance(
+            transform.position,
+            currentTarget.position
+        );
 
-        // 4. Perform combat movement and attack logic
+        // 4. Attack or chase.
         if (distanceToTarget <= attackRange)
         {
             agent.isStopped = true;
@@ -70,9 +96,10 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
-    void FindClosestPlayer()
+    private void FindClosestPlayer()
     {
-        GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
+        GameObject[] players =
+            GameObject.FindGameObjectsWithTag("Player");
 
         if (players.Length == 0)
         {
@@ -85,18 +112,23 @@ public class EnemyAI : MonoBehaviour
 
         foreach (GameObject playerObj in players)
         {
-            
             Transform targetPoint = playerObj.transform;
-            ActiveRagdoll ragdoll = playerObj.GetComponent<ActiveRagdoll>();
+
+            ActiveRagdoll ragdoll =
+                playerObj.GetComponent<ActiveRagdoll>();
+
             if (ragdoll != null && ragdoll.Hips != null)
             {
                 targetPoint = ragdoll.Hips.transform;
             }
 
-            float distance = Vector3.Distance(transform.position, targetPoint.position);
+            float distance = Vector3.Distance(
+                transform.position,
+                targetPoint.position
+            );
 
-            
-            if (distance <= chaseRange && distance < closestDistance)
+            if (distance <= chaseRange &&
+                distance < closestDistance)
             {
                 closestDistance = distance;
                 bestTarget = targetPoint;
@@ -106,15 +138,21 @@ public class EnemyAI : MonoBehaviour
         currentTarget = bestTarget;
     }
 
-    void TriggerAttack()
+    private void TriggerAttack()
     {
-        if (currentTarget == null) return;
+        if (currentTarget == null)
+            return;
 
-        Vector3 lookDirection = (currentTarget.position - transform.position).normalized;
-        lookDirection.y = 0;
-        if (lookDirection != Vector3.zero)
+        Vector3 lookDirection =
+            currentTarget.position - transform.position;
+
+        lookDirection.y = 0f;
+
+        if (lookDirection.sqrMagnitude > 0.001f)
         {
-            transform.rotation = Quaternion.LookRotation(lookDirection);
+            transform.rotation = Quaternion.LookRotation(
+                lookDirection.normalized
+            );
         }
 
         if (animator != null)
@@ -123,7 +161,7 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
-    void OnDrawGizmosSelected()
+    private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, chaseRange);

@@ -24,29 +24,42 @@ public class EnemyHealth : NetworkBehaviour
             NetworkVariableWritePermission.Server
         );
 
-    public int CurrentHealth => currentHealth.Value;
-    public bool IsDead => isDead.Value;
-
     private EnemyAI enemyAI;
     private NavMeshAgent agent;
-    private Animator animator;
+
+    public int CurrentHealth => currentHealth.Value;
+    public bool IsDead => isDead.Value;
 
     private void Awake()
     {
         enemyAI = GetComponent<EnemyAI>();
         agent = GetComponent<NavMeshAgent>();
-        animator = GetComponentInChildren<Animator>();
     }
 
     public override void OnNetworkSpawn()
     {
+        currentHealth.OnValueChanged += OnHealthChanged;
+        isDead.OnValueChanged += OnDeadChanged;
+
         if (IsServer)
+        {
             currentHealth.Value = maxHealth;
+            isDead.Value = false;
+        }
+
+        if (IsDead)
+            HandleDeath();
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        currentHealth.OnValueChanged -= OnHealthChanged;
+        isDead.OnValueChanged -= OnDeadChanged;
     }
 
     public void TakeDamage(int damageAmount)
     {
-        if (!IsServer || IsDead)
+        if (!IsServer || IsDead || damageAmount <= 0)
             return;
 
         currentHealth.Value = Mathf.Max(
@@ -55,7 +68,7 @@ public class EnemyHealth : NetworkBehaviour
         );
 
         Debug.Log(
-            $"[{name}] Took {damageAmount} damage. " +
+            $"[{gameObject.name}] Took {damageAmount} damage. " +
             $"Health: {currentHealth.Value}/{maxHealth}"
         );
 
@@ -65,32 +78,41 @@ public class EnemyHealth : NetworkBehaviour
 
     private void Die()
     {
-        if (IsDead)
+        if (!IsServer || IsDead)
             return;
 
         isDead.Value = true;
 
-        Debug.Log($"[{name}] Enemy died!");
+        Debug.Log($"[{gameObject.name}] Enemy died!");
 
-        if (enemyAI != null)
-            enemyAI.enabled = false;
-
-        if (agent != null)
-            agent.enabled = false;
-
-        DieClientRpc();
+        HandleDeath();
 
         StartCoroutine(DespawnAfterDeath());
     }
 
-    [ClientRpc]
-    private void DieClientRpc()
+    private void HandleDeath()
     {
-        if (animator != null)
-            animator.SetTrigger("Die");
+        if (enemyAI != null)
+            enemyAI.enabled = false;
+
+        if (agent != null && agent.enabled)
+            agent.enabled = false;
 
         foreach (Collider col in GetComponentsInChildren<Collider>())
             col.enabled = false;
+    }
+
+    private void OnHealthChanged(int previous, int current)
+    {
+        Debug.Log(
+            $"[{gameObject.name}] Health: {current}/{maxHealth}"
+        );
+    }
+
+    private void OnDeadChanged(bool previous, bool current)
+    {
+        if (current)
+            HandleDeath();
     }
 
     private IEnumerator DespawnAfterDeath()
