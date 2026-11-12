@@ -1070,13 +1070,6 @@ MonoBehaviour:
   equipKey: 31
   swingCooldown: 1
   swingMovementLockDuration: 0.9
-  impactDelay: 0.2
-  damage: 25
-  attackBoxCenter: {x: 0, y: 1, z: 1}
-  attackBoxSize: {x: 1.6, y: 1.6, z: 2}
-  hitLayers:
-    serializedVersion: 2
-    m_Bits: 4294967295
 --- !u!114 &8519219139710117695
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5086,6 +5079,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2931400061660422972}
   - component: {fileID: 5703286739378736450}
+  - component: {fileID: 3863954392080089080}
   m_Layer: 0
   m_Name: BatHitbox
   m_TagString: Untagged
@@ -5129,6 +5123,18 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.2125697, y: 0.8436106, z: 0.21263307}
   m_Center: {x: -0.008313744, y: 0.5247786, z: 0.014542824}
+--- !u!114 &3863954392080089080
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8910577053259834994}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e36e19a4e2cbdeb4a9384a3913f76c63, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BatHitbox
 --- !u!1001 &7942398023970826755
 PrefabInstance:
   m_ObjectHideFlags: 0

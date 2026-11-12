@@ -1,5 +1,4 @@
 
-using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
@@ -87,7 +86,9 @@ public class EnemyHealth : NetworkBehaviour
 
         HandleDeath();
 
-        StartCoroutine(DespawnAfterDeath());
+        // Immediately despawn the enemy for all players.
+        if (NetworkObject.IsSpawned)
+            NetworkObject.Despawn(true);
     }
 
     private void HandleDeath()
@@ -113,13 +114,5 @@ public class EnemyHealth : NetworkBehaviour
     {
         if (current)
             HandleDeath();
-    }
-
-    private IEnumerator DespawnAfterDeath()
-    {
-        yield return new WaitForSeconds(3f);
-
-        if (NetworkObject != null && NetworkObject.IsSpawned)
-            NetworkObject.Despawn(true);
     }
 }

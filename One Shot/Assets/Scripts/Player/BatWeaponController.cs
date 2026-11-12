@@ -15,17 +15,11 @@ public class BatWeaponController : NetworkBehaviour
     [Header("Attack")]
     [SerializeField] private float swingCooldown = 1f;
     [SerializeField] private float swingMovementLockDuration = 0.9f;
-    [SerializeField] private float impactDelay = 0.2f;
     [SerializeField] private int damage = 25;
 
-    [Header("Server Hit Detection")]
-    [SerializeField] private Vector3 attackBoxCenter =
-        new Vector3(0f, 1f, 1f);
-
-    [SerializeField] private Vector3 attackBoxSize =
-        new Vector3(1.6f, 1.6f, 2f);
-
-    [SerializeField] private LayerMask hitLayers = ~0;
+    [Header("Hit Timing")]
+    [SerializeField] private float impactDelay = 0.2f;
+    [SerializeField] private float hitWindowDuration = 0.25f;
 
     private static readonly int BatSwingHash =
         Animator.StringToHash("BatSwing");
@@ -43,6 +37,11 @@ public class BatWeaponController : NetworkBehaviour
     private float nextLocalSwingTime;
     private float nextServerSwingTime;
     private bool equipRequestPending;
+    private bool canDealDamage;
+
+    private Coroutine damageWindowCoroutine;
+
+    private readonly HashSet<EnemyHealth> hitEnemies = new();
 
     public bool IsEquipped => isEquipped.Value;
 
@@ -71,6 +70,11 @@ public class BatWeaponController : NetworkBehaviour
     public override void OnNetworkDespawn()
     {
         isEquipped.OnValueChanged -= OnEquippedChanged;
+
+        if (damageWindowCoroutine != null)
+            StopCoroutine(damageWindowCoroutine);
+
+        canDealDamage = false;
     }
 
     private void Update()
@@ -113,9 +117,34 @@ public class BatWeaponController : NetworkBehaviour
 
         nextServerSwingTime = Time.time + swingCooldown;
 
-        PlayBatSwingClientRpc();
+        StartServerSwing();
 
-        StartCoroutine(ApplyBatDamage());
+        PlayBatSwingClientRpc();
+    }
+
+    private void StartServerSwing()
+    {
+        if (damageWindowCoroutine != null)
+            StopCoroutine(damageWindowCoroutine);
+
+        canDealDamage = false;
+        hitEnemies.Clear();
+
+        damageWindowCoroutine = StartCoroutine(EnableDamageWindow());
+    }
+
+    private IEnumerator EnableDamageWindow()
+    {
+        // Wait until the bat reaches the impact part of the swing.
+        yield return new WaitForSeconds(impactDelay);
+
+        canDealDamage = true;
+
+        // Only allow damage during this short window.
+        yield return new WaitForSeconds(hitWindowDuration);
+
+        canDealDamage = false;
+        damageWindowCoroutine = null;
     }
 
     [ClientRpc]
@@ -135,37 +164,38 @@ public class BatWeaponController : NetworkBehaviour
         }
     }
 
-    private IEnumerator ApplyBatDamage()
+    // Called by the bat's collider through BatHitbox.cs.
+    [ServerRpc]
+    public void RequestEnemyDamageServerRpc(
+        NetworkObjectReference enemyReference)
     {
-        yield return new WaitForSeconds(impactDelay);
+        if (!isEquipped.Value || !canDealDamage)
+            return;
 
-        Vector3 center = transform.TransformPoint(attackBoxCenter);
+        if (!enemyReference.TryGet(out NetworkObject enemyObject))
+            return;
 
-        Vector3 halfExtents = attackBoxSize * 0.5f;
+        EnemyHealth enemy = enemyObject.GetComponent<EnemyHealth>();
 
-        Collider[] hits = Physics.OverlapBox(
-            center,
-            halfExtents,
-            transform.rotation,
-            hitLayers,
-            QueryTriggerInteraction.Collide
-        );
+        if (enemy == null)
+            return;
 
-        HashSet<EnemyHealth> hitEnemies = new HashSet<EnemyHealth>();
+        TryDamageEnemy(enemy);
+    }
 
-        foreach (Collider hit in hits)
-        {
-            EnemyHealth enemy =
-                hit.GetComponentInParent<EnemyHealth>();
+    private void TryDamageEnemy(EnemyHealth enemy)
+    {
+        if (!IsServer || !isEquipped.Value || !canDealDamage)
+            return;
 
-            if (enemy == null || enemy.IsDead)
-                continue;
+        if (enemy == null || enemy.IsDead)
+            return;
 
-            if (!hitEnemies.Add(enemy))
-                continue;
+        // One enemy can only be damaged once per swing.
+        if (!hitEnemies.Add(enemy))
+            return;
 
-            enemy.TakeDamage(damage);
-        }
+        enemy.TakeDamage(damage);
     }
 
     private void OnEquippedChanged(bool previous, bool current)
@@ -178,21 +208,5 @@ public class BatWeaponController : NetworkBehaviour
     {
         if (batVisual != null)
             batVisual.SetActive(visible);
-    }
-
-    private void OnDrawGizmosSelected()
-    {
-        Gizmos.color = Color.red;
-
-        Matrix4x4 oldMatrix = Gizmos.matrix;
-
-        Gizmos.matrix = transform.localToWorldMatrix;
-
-        Gizmos.DrawWireCube(
-            attackBoxCenter,
-            attackBoxSize
-        );
-
-        Gizmos.matrix = oldMatrix;
     }
 }
