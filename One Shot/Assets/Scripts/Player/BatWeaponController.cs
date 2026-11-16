@@ -18,8 +18,8 @@ public class BatWeaponController : NetworkBehaviour
     [SerializeField] private int damage = 25;
 
     [Header("Hit Timing")]
-    [SerializeField] private float impactDelay = 0.2f;
-    [SerializeField] private float hitWindowDuration = 0.25f;
+    [SerializeField] private float impactDelay = 0.15f;
+    [SerializeField] private float hitWindowDuration = 0.45f;
 
     private static readonly int BatSwingHash =
         Animator.StringToHash("BatSwing");
@@ -135,12 +135,12 @@ public class BatWeaponController : NetworkBehaviour
 
     private IEnumerator EnableDamageWindow()
     {
-        // Wait until the bat reaches the impact part of the swing.
+        // Wait until the impact part of the animation.
         yield return new WaitForSeconds(impactDelay);
 
         canDealDamage = true;
 
-        // Only allow damage during this short window.
+        // Keep damage enabled for the hit window.
         yield return new WaitForSeconds(hitWindowDuration);
 
         canDealDamage = false;
@@ -164,12 +164,11 @@ public class BatWeaponController : NetworkBehaviour
         }
     }
 
-    // Called by the bat's collider through BatHitbox.cs.
     [ServerRpc]
     public void RequestEnemyDamageServerRpc(
         NetworkObjectReference enemyReference)
     {
-        if (!isEquipped.Value || !canDealDamage)
+        if (!IsServer || !isEquipped.Value || !canDealDamage)
             return;
 
         if (!enemyReference.TryGet(out NetworkObject enemyObject))
@@ -177,7 +176,7 @@ public class BatWeaponController : NetworkBehaviour
 
         EnemyHealth enemy = enemyObject.GetComponent<EnemyHealth>();
 
-        if (enemy == null)
+        if (enemy == null || enemy.IsDead)
             return;
 
         TryDamageEnemy(enemy);
@@ -191,7 +190,7 @@ public class BatWeaponController : NetworkBehaviour
         if (enemy == null || enemy.IsDead)
             return;
 
-        // One enemy can only be damaged once per swing.
+        // Each enemy can only be damaged once per swing.
         if (!hitEnemies.Add(enemy))
             return;
 
