@@ -8,6 +8,7 @@ public class EnemyHealth : NetworkBehaviour
 {
     [Header("Health Settings")]
     [SerializeField] private int maxHealth = 50;
+    [SerializeField] private EnemyData enemyData;
 
     private NetworkVariable<int> currentHealth =
         new NetworkVariable<int>(
@@ -56,7 +57,7 @@ public class EnemyHealth : NetworkBehaviour
         isDead.OnValueChanged -= OnDeadChanged;
     }
 
-    public void TakeDamage(int damageAmount)
+    public void TakeDamage(int damageAmount, GameObject killer = null)
     {
         if (!IsServer || IsDead || damageAmount <= 0)
             return;
@@ -72,15 +73,32 @@ public class EnemyHealth : NetworkBehaviour
         );
 
         if (currentHealth.Value <= 0)
-            Die();
+            Die(killer);
     }
 
-    private void Die()
+    private void Die(GameObject killer = null)
     {
         if (!IsServer || IsDead)
             return;
 
         isDead.Value = true;
+
+        if (enemyData != null)
+        {
+            if (killer != null)
+            {
+                PlayerProgression progression = killer.GetComponentInParent<PlayerProgression>();
+                if (progression != null)
+                    progression.AddXP(enemyData.xpReward);
+
+                PlayerQuestLog questLog = killer.GetComponentInParent<PlayerQuestLog>();
+                if (questLog != null)
+                    questLog.TryProgressQuest(enemyData.enemyID, 1);
+            }
+
+            if (ServerGlobalQuestManager.Instance != null)
+                ServerGlobalQuestManager.Instance.NotifyGlobalEnemyKilled(enemyData.enemyID);
+        }
 
         Debug.Log($"[{gameObject.name}] Enemy died!");
 

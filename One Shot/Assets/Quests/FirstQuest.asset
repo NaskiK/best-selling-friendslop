@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3f88c3c6d95d91943888c2b088a00c84, type: 3}
+  m_Name: FirstQuest
+  m_EditorClassIdentifier: Assembly-CSharp::QuestData
+  questID: Kill Enemy
+  questTitle: 2 Policewomen
+  description: 
+  isSharedQuest: 1
+  type: 0
+  targetID: 
+  requiredAmount: 2
+  rewardXP: 100
+  nextQuestInChain: {fileID: 0}
